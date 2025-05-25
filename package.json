@@ -1,13 +1,12 @@
 {
-    "name": "soundcloud-clone-api",
-    "version": "1.0.0",
-    "description": "Backend API for a music platform",
-    "main": "server.js",
     
-    
+        "name": "rebel-app",
+        "version": "1.0.0",
         "scripts": {
-          "build": "rm -f tsconfig.json 2>/dev/null; echo 'TypeScript disabled for deployment'; exit 0"
+          "build": "cd frontend && npm install && npm run build",
+          "dev": "cd frontend && npm start"
         },
+      
       
       
     "author": "REBEL",

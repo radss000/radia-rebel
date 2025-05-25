@@ -1,0 +1,21 @@
+{
+    "name": "rebel-frontend",
+    "version": 2,
+    "buildCommand": "cd frontend && npm run build",
+    "outputDirectory": "frontend/build",
+    "installCommand": "cd frontend && npm install",
+    "framework": "create-react-app",
+    "routes": [
+      {
+        "src": "/static/(.*)",
+        "dest": "/static/$1"
+      },
+      {
+        "src": "/(.*)",
+        "dest": "/index.html"
+      }
+    ],
+    "env": {
+      "REACT_APP_API_URL": "https://votre-backend-url.com"
+    }
+  }
