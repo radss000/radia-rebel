@@ -1,0 +1,35 @@
+# Frontend (sera déployé séparément sur Vercel)
+frontend/
+
+# Documentation
+README.md
+*.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Runtime
+.tmp/
+temp/uploads/*
+!temp/uploads/.gitkeep
+
+# Tests
+test/
+tests/
+*.test.js
+*.test.ts
+
+# Dev dependencies sont déjà exclus par nixpacks

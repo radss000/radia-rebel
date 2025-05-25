@@ -1,25 +1,30 @@
 {
-    
-        "name": "rebel-app",
-        "version": "1.0.0",
-        "scripts": {
-          "build": "cd frontend && npm install && npm run build",
-          "dev": "cd frontend && npm start"
-        },
-      
-      
-      
+    "name": "rebel-app",
+    "version": "1.0.0",
+    "description": "REBEL - Anti-Algorithm Music Hub Backend API",
+    "main": "src/app.js",
+    "scripts": {
+        "start": "node src/app.js",
+        "dev": "nodemon src/app.js",
+        "build": "echo 'Backend - No build step required'",
+        "frontend:build": "cd frontend && npm install && npm run build",
+        "frontend:dev": "cd frontend && npm start",
+        "test": "mocha --require ts-node/register **/*.test.ts",
+        "postinstall": "echo 'Backend dependencies installed successfully'"
+    },
+    "engines": {
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
+    },
     "author": "REBEL",
     "license": "MIT",
     "dependencies": {
         "@coral-xyz/anchor": "^0.31.1",
         "@magic-ext/solana": "^26.0.5",
         "@magic-sdk/admin": "^2.4.1",
-
         "@solana/spl-memo": "^0.2.5",
         "@solana/web3.js": "^1.98.2",
         "@types/uuid": "^10.0.0",
-
         "bcryptjs": "^2.4.3",
         "bip39": "^3.1.0",
         "bs58": "4.0.1",
@@ -35,7 +40,8 @@
         "mongoose": "^7.8.6",
         "morgan": "^1.10.0",
         "multer": "^1.4.5-lts.1",
-        "uuid": "^11.1.0"
+        "uuid": "^11.1.0",
+        "path": "^0.12.7"
     },
     "devDependencies": {
         "@types/chai": "^5.2.1",
@@ -55,7 +61,14 @@
         "type": "git",
         "url": "git+https://github.com/Matousse/Rebel.git"
     },
-    "keywords": [],
+    "keywords": [
+        "music",
+        "blockchain",
+        "solana", 
+        "web3",
+        "api",
+        "backend"
+    ],
     "bugs": {
         "url": "https://github.com/Matousse/Rebel/issues"
     },
