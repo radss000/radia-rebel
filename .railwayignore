@@ -1,6 +1,10 @@
 # Frontend (sera déployé séparément sur Vercel)
 frontend/
 
+# Package managers locks (on garde package-lock.json, on supprime pnpm-lock.yaml)
+pnpm-lock.yaml
+yarn.lock
+
 # Documentation
 README.md
 *.md
@@ -31,5 +35,3 @@ test/
 tests/
 *.test.js
 *.test.ts
-
-# Dev dependencies sont déjà exclus par nixpacks

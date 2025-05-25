@@ -1,8 +1,19 @@
 [phases.build]
-cmds = ["npm install"]
+cmds = [
+    "npm ci --omit=dev",
+    "mkdir -p public/uploads/tracks public/uploads/profiles public/uploads/covers temp/uploads"
+]
 
 [phases.deploy]
 cmd = "npm start"
 
 [variables]
 NODE_ENV = "production"
+NPM_CONFIG_PRODUCTION = "true"
+
+[providers]
+node = "18"
+
+# Forcer l'utilisation de npm au lieu de pnpm
+[providers.node]
+packageManager = "npm"
