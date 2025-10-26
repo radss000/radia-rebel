@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Magic } from 'magic-sdk'; // Import Magic SDK
+import { Magic } from 'magic-sdk';
 import { OAuthExtension } from '@magic-ext/oauth';
 import FeedPage from './pages/FeedPage';
 import TrackProofButton from './components/TrackProofButton';
 import SonicMapPage from './pages/SonicMapPage';
 
 // Icons
-import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home } from 'lucide-react';
+import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home, Menu, X, ArrowLeft, Download, ExternalLink, AlertTriangle, CheckCircle, Clock, Calendar, MapPin, Heart, MessageCircle, Share, Play, Edit, Delete } from 'lucide-react';
 
 /**
- * Main App Component
+ * Main App Component - CoStar-inspired Black & White Design
  */
 function App() {
   const [user, setUser] = useState(null);
@@ -17,29 +17,25 @@ function App() {
   const [magicSDK, setMagicSDK] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
   const [error, setError] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Initialize Magic SDK and check user state
   useEffect(() => {
     const initMagic = async () => {
       try {
-        // Initialize Magic with your publishable key
-        // Make sure to install magic-sdk via npm first
         const magic = new Magic('pk_live_DAE97419AE6EBC48', {
           extensions: []
         });
         setMagicSDK(magic);
         
-        // Check if user is logged in
         const isLoggedIn = await magic.user.isLoggedIn();
         
         if (isLoggedIn) {
-          // Get user metadata from Magic
           try {
             const metadata = await magic.user.getInfo();
             const token = localStorage.getItem('token');
             
             if (token) {
-              // Fetch user profile from API
               try {
                 const response = await fetch('http://localhost:5001/api/users/profile', {
                   headers: {
@@ -54,14 +50,11 @@ function App() {
                       ...userData.data,
                       token
                     });
-                    console.log('User authenticated:', userData.data);
                   }
                 } else {
-                  // Invalid token, remove it
                   localStorage.removeItem('token');
                 }
               } catch (error) {
-                console.error('Error fetching user profile:', error);
                 localStorage.removeItem('token');
               }
             }
@@ -80,7 +73,6 @@ function App() {
     initMagic();
   }, []);
 
-  // Logout user
   const handleLogout = async () => {
     if (magicSDK) {
       try {
@@ -88,6 +80,7 @@ function App() {
         localStorage.removeItem('token');
         setUser(null);
         setCurrentPage('home');
+        setMenuOpen(false);
       } catch (error) {
         console.error('Error logging out:', error);
         setError('Failed to log out');
@@ -95,299 +88,414 @@ function App() {
     }
   };
 
+  const navigate = (page) => {
+    setCurrentPage(page);
+    setMenuOpen(false);
+  };
+
   // Render current page
   const renderPage = () => {
     switch(currentPage) {
       case 'login':
         return <LoginPage 
-                 onBack={() => setCurrentPage('home')} 
+                 onBack={() => navigate('home')} 
                  magicSDK={magicSDK} 
                  setUser={setUser} 
-                 navigateTo={setCurrentPage}
+                 navigateTo={navigate}
                />;
       case 'profile':
         return user ? (
-          <ProfilePage user={user} setUser={setUser} onBack={() => setCurrentPage('home')} />
+          <ProfilePage user={user} setUser={setUser} onBack={() => navigate('home')} />
         ) : (
           <LoginPage 
-            onBack={() => setCurrentPage('home')} 
+            onBack={() => navigate('home')} 
             magicSDK={magicSDK} 
             setUser={setUser} 
-            navigateTo={setCurrentPage}
+            navigateTo={navigate}
           />
         );
       case 'tracks':
         return user ? (
-          <TracksPage user={user} onBack={() => setCurrentPage('home')} />
+          <TracksPage user={user} onBack={() => navigate('home')} navigateTo={navigate} />
         ) : (
           <LoginPage 
-            onBack={() => setCurrentPage('home')} 
+            onBack={() => navigate('home')} 
             magicSDK={magicSDK} 
             setUser={setUser} 
-            navigateTo={setCurrentPage}
+            navigateTo={navigate}
           />
         );
       case 'upload':
         return user ? (
-          <UploadPage user={user} onBack={() => setCurrentPage('home')} />
+          <UploadPage user={user} onBack={() => navigate('home')} />
         ) : (
           <LoginPage 
-            onBack={() => setCurrentPage('home')} 
+            onBack={() => navigate('home')} 
             magicSDK={magicSDK} 
             setUser={setUser} 
-            navigateTo={setCurrentPage}
+            navigateTo={navigate}
           />
         );
-        case 'proofs':
-      return user ? (
-        <ProofsPage 
-          user={user} 
-          onBack={() => setCurrentPage('home')} 
-          navigateTo={setCurrentPage}
-        />
-      ) : (
-        <LoginPage 
-          onBack={() => setCurrentPage('home')} 
-          magicSDK={magicSDK} 
-          setUser={setUser} 
-          navigateTo={setCurrentPage}
-        />
-      );
-        case 'feed':
-          return user ? (
-            <FeedPage user={user} navigateTo={setCurrentPage} />
-          ) : (
-            <LoginPage 
-              onBack={() => setCurrentPage('home')} 
-              magicSDK={magicSDK} 
-              setUser={setUser} 
-              navigateTo={setCurrentPage}
-            />
-          );
+      case 'proofs':
+        return user ? (
+          <ProofsPage 
+            user={user} 
+            onBack={() => navigate('home')} 
+            navigateTo={navigate}
+          />
+        ) : (
+          <LoginPage 
+            onBack={() => navigate('home')} 
+            magicSDK={magicSDK} 
+            setUser={setUser} 
+            navigateTo={navigate}
+          />
+        );
+      case 'feed':
+        return user ? (
+          <FeedPage user={user} navigateTo={navigate} />
+        ) : (
+          <LoginPage 
+            onBack={() => navigate('home')} 
+            magicSDK={magicSDK} 
+            setUser={setUser} 
+            navigateTo={navigate}
+          />
+        );
       case 'help':
-        return <HelpPage onBack={() => setCurrentPage('home')} />;
+        return <HelpPage onBack={() => navigate('home')} />;
       case 'sonic-map':
         return <SonicMapPage />;
       default:
-        return <HomePage user={user} navigateTo={setCurrentPage} />;
+        return <HomePage user={user} navigateTo={navigate} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="main-container">
       {/* Header with navigation */}
-      <header className="bg-gray-800 p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-violet-500">REBEL</h1>
-          <nav className="hidden md:flex space-x-4">
-            <button 
-              onClick={() => setCurrentPage('home')}
-              className="text-gray-300 hover:text-white"
+      <header className="header-costar">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-between items-center">
+            {/* Logo */}
+            <div className="flex items-center">
+              <img 
+                src="https://s17.aconvert.com/convert/p3r68-cdx67/txwln-08ufs.svg" 
+                alt="REBEL" 
+                className="h-8 w-auto"
+              />
+            </div>
+
+            {/* Desktop Navigation */}
+            <nav className="hidden lg:flex items-center space-x-8">
+              <NavButton onClick={() => navigate('home')} active={currentPage === 'home'}>
+                Home
+              </NavButton>
+              <NavButton onClick={() => navigate('feed')} active={currentPage === 'feed'}>
+                Feed
+              </NavButton>
+              <NavButton onClick={() => navigate('sonic-map')} active={currentPage === 'sonic-map'}>
+                Sonic Map
+              </NavButton>
+              {user && (
+                <>
+                  <NavButton onClick={() => navigate('tracks')} active={currentPage === 'tracks'}>
+                    My Tracks
+                  </NavButton>
+                  <NavButton onClick={() => navigate('upload')} active={currentPage === 'upload'}>
+                    Upload
+                  </NavButton>
+                  <NavButton onClick={() => navigate('proofs')} active={currentPage === 'proofs'}>
+                    Proofs
+                  </NavButton>
+                </>
+              )}
+            </nav>
+
+            {/* User actions */}
+            <div className="hidden lg:flex items-center space-x-4">
+              {user ? (
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={() => navigate('profile')}
+                    className="flex items-center space-x-2 text-costar-text-light hover:text-white transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-costar-gray-dark flex items-center justify-center">
+                      {user.profilePicture ? (
+                        <img 
+                          src={`http://localhost:5001/uploads/profiles/${user.profilePicture}`}
+                          alt={user.username}
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium">
+                          {user.username?.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm">{user.username}</span>
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="text-costar-text-light hover:text-white transition-colors"
+                  >
+                    <LogOut size={20} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => navigate('login')}
+                  className="btn-primary-costar"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
+
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="lg:hidden text-costar-text-light hover:text-white transition-colors"
             >
-              Home
+              {menuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <button 
-              onClick={() => setCurrentPage('feed')}
-              className="text-gray-300 hover:text-white"
-            >
-              Feed
-            </button>
-            <button 
-              onClick={() => setCurrentPage('sonic-map')}
-              className="text-gray-300 hover:text-white"
-            >
-              Sonic-map
-            </button>
-            {user ? (
-              <>
-                <button 
-                  onClick={() => setCurrentPage('tracks')}
-                  className="text-gray-300 hover:text-white"
-                >
-                  My Tracks
-                </button>
-                <button 
-                  onClick={() => setCurrentPage('upload')}
-                  className="text-gray-300 hover:text-white"
-                >
-                  Upload
-                </button>
-                <button 
-                  onClick={() => setCurrentPage('proofs')}
-                  className="text-gray-300 hover:text-white"
-                >
-                  Proofs
-                </button>
-                <button 
-                  onClick={() => setCurrentPage('profile')}
-                  className="text-gray-300 hover:text-white"
-                >
-                  Profile
-                </button>
-                <button 
-                  onClick={handleLogout}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  Logout
-                </button>
-              </>
-            ) : (
-              <button 
-                onClick={() => setCurrentPage('login')}
-                className="text-violet-400 hover:text-violet-300"
-              >
-                Login
-              </button>
-            )}
-          </nav>
+          </div>
         </div>
+
+        {/* Mobile Navigation */}
+        {menuOpen && (
+          <div className="lg:hidden bg-costar-dark border-t border-costar-border">
+            <div className="px-4 py-4 space-y-3">
+              <MobileNavButton onClick={() => navigate('home')} active={currentPage === 'home'}>
+                <Home size={20} />
+                <span>Home</span>
+              </MobileNavButton>
+              <MobileNavButton onClick={() => navigate('feed')} active={currentPage === 'feed'}>
+                <Music size={20} />
+                <span>Feed</span>
+              </MobileNavButton>
+              <MobileNavButton onClick={() => navigate('sonic-map')} active={currentPage === 'sonic-map'}>
+                <Award size={20} />
+                <span>Sonic Map</span>
+              </MobileNavButton>
+              {user ? (
+                <>
+                  <MobileNavButton onClick={() => navigate('tracks')} active={currentPage === 'tracks'}>
+                    <Music size={20} />
+                    <span>My Tracks</span>
+                  </MobileNavButton>
+                  <MobileNavButton onClick={() => navigate('upload')} active={currentPage === 'upload'}>
+                    <Upload size={20} />
+                    <span>Upload</span>
+                  </MobileNavButton>
+                  <MobileNavButton onClick={() => navigate('proofs')} active={currentPage === 'proofs'}>
+                    <Shield size={20} />
+                    <span>Proofs</span>
+                  </MobileNavButton>
+                  <MobileNavButton onClick={() => navigate('profile')} active={currentPage === 'profile'}>
+                    <User size={20} />
+                    <span>Profile</span>
+                  </MobileNavButton>
+                  <MobileNavButton onClick={handleLogout}>
+                    <LogOut size={20} />
+                    <span>Sign Out</span>
+                  </MobileNavButton>
+                </>
+              ) : (
+                <MobileNavButton onClick={() => navigate('login')} active={currentPage === 'login'}>
+                  <LogIn size={20} />
+                  <span>Sign In</span>
+                </MobileNavButton>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto py-8 px-4">
+      <main className="min-h-[calc(100vh-80px)]">
         {loading ? (
           <div className="flex items-center justify-center min-h-[50vh]">
-            <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
+            <div className="loading-costar"></div>
           </div>
         ) : (
           renderPage()
         )}
       </main>
 
-      {/* Error messages */}
+      {/* Error Toast */}
       {error && (
-        <div className="fixed top-4 right-4 bg-red-900 text-white p-4 rounded-lg shadow-lg">
-          {error}
-          <button 
-            onClick={() => setError('')}
-            className="ml-4 text-white font-bold"
-          >
-            ×
-          </button>
+        <div className="notification-costar error-costar">
+          <div className="flex items-center space-x-2">
+            <span>{error}</span>
+            <button 
+              onClick={() => setError('')}
+              className="text-red-300 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
-// HomePage component
+
+// Navigation Components
+function NavButton({ children, onClick, active = false }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`nav-link-costar ${active ? 'nav-link-active' : ''}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MobileNavButton({ children, onClick, active = false }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center space-x-3 w-full p-3 rounded-lg transition-colors ${
+        active 
+          ? 'bg-white bg-opacity-10 text-white' 
+          : 'text-costar-text-light hover:text-white hover:bg-white hover:bg-opacity-10'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// HomePage component with CoStar-inspired design
 function HomePage({ user, navigateTo }) {
-    return (
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
-          <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-12">
+      {/* Hero Section with Logo */}
+      <div className="text-center mb-16">
+        <div className="flex justify-center mb-8">
+          <img 
+            src="https://s17.aconvert.com/convert/p3r68-cdx67/txwln-08ufs.svg" 
+            alt="REBEL" 
+            className="h-20 w-auto"
+          />
         </div>
-        <button 
-  onClick={() => navigateTo('feed')}
-  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
->
-  <Home size={16} className="mr-2" />
-  <span>Explore the Feed</span>
-</button>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
-            <p className="text-gray-300 mb-4">
-              REBEL is the definitive anti-algorithmic sanctuary for underground music, 
-              where human curation trumps AI recommendations, restoring cultural value and 
-              financial sustainability to authentic electronic and experimental music scenes.
-            </p>
-            <p className="text-gray-300">
-              We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
-              where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
-              infrastructure.
-            </p>
-          </div>
-          
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Get Started</h2>
-            {user ? (
-              <div>
-                <p className="text-gray-300 mb-4">
-                  Welcome, <span className="text-violet-400">{user.username || user.email}</span>!
-                </p>
-                <div className="space-y-3">
-                  <button 
-                    onClick={() => navigateTo('upload')}
-                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                  >
-                    <Upload size={16} className="mr-2" />
-                    <span>Upload a new track</span>
-                  </button>
-                  <button 
-                    onClick={() => navigateTo('tracks')}
-                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                  >
-                    <Music size={16} className="mr-2" />
-                    <span>Manage your tracks</span>
-                  </button>
-                  <button 
-                    onClick={() => navigateTo('proofs')}
-                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                  >
-                    <Shield size={16} className="mr-2" />
-                    <span>View your ownership proofs</span>
-                  </button>
+        <p className="text-lg text-costar-text-light max-w-2xl mx-auto">
+          The anti-algorithmic sanctuary for underground music, where human curation 
+          trumps AI recommendations.
+        </p>
+      </div>
+
+      {/* About Section */}
+      <div className="about-section">
+        <div className="about-card">
+          <h2 className="text-section-title mb-4">Our Vision</h2>
+          <p className="text-costar-text-muted mb-4">
+            REBEL is the definitive anti-algorithmic sanctuary for underground music, 
+            where human curation trumps AI recommendations, restoring cultural value and 
+            financial sustainability to authentic electronic and experimental music scenes.
+          </p>
+          <p className="text-costar-text-muted">
+            We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
+            where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
+            infrastructure.
+          </p>
+        </div>
+
+        <div className="about-card">
+          <h2 className="text-section-title mb-4">Get Started</h2>
+          {user ? (
+            <div>
+              <p className="text-costar-text-muted mb-4">
+                Welcome, <span className="text-white font-medium">{user.username || user.email}</span>!
+              </p>
+              <div className="feature-grid">
+                <div className="feature-item hover-lift cursor-pointer" onClick={() => navigateTo('upload')}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Upload size={16} />
+                    <span className="feature-title">Upload a new track</span>
+                  </div>
+                  <p className="feature-description">Share your music with the community</p>
+                </div>
+                <div className="feature-item hover-lift cursor-pointer" onClick={() => navigateTo('tracks')}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Music size={16} />
+                    <span className="feature-title">Manage your tracks</span>
+                  </div>
+                  <p className="feature-description">View and edit your uploaded music</p>
+                </div>
+                <div className="feature-item hover-lift cursor-pointer" onClick={() => navigateTo('proofs')}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Shield size={16} />
+                    <span className="feature-title">View your ownership proofs</span>
+                  </div>
+                  <p className="feature-description">Manage blockchain timestamp proofs</p>
+                </div>
+                <div className="feature-item hover-lift cursor-pointer" onClick={() => navigateTo('feed')}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Home size={16} />
+                    <span className="feature-title">Explore the Feed</span>
+                  </div>
+                  <p className="feature-description">Discover new underground music</p>
                 </div>
               </div>
-            ) : (
-              <div>
-                <p className="text-gray-300 mb-4">
-                  Join the community and start sharing your music with true ownership.
-                </p>
-                <button 
-                  onClick={() => navigateTo('login')}
-                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-                >
-                  <div className="flex items-center">
-                    <LogIn size={16} className="mr-2" />
-                    <span>Login with Magic Link</span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-costar-text-muted mb-4">
+                Join the community and start sharing your music with true ownership.
+              </p>
+              <button 
+                onClick={() => navigateTo('login')}
+                className="btn-primary-costar flex items-center space-x-2"
+              >
+                <LogIn size={16} />
+                <span>Login with Magic Link</span>
+              </button>
+            </div>
+          )}
         </div>
         
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4 text-center">Core Features</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-                <Music size={24} className="text-violet-400" />
+        <div className="about-card">
+          <h2 className="text-section-title mb-4">Core Features</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="feature-item text-center hover-lift cursor-pointer" onClick={() => navigateTo('sonic-map')}>
+              <div className="w-10 h-10 rounded-lg bg-costar-gray-dark flex items-center justify-center mb-3 mx-auto">
+                <Music size={20} />
               </div>
-              <h3 className="font-medium mb-2">Sonic Map</h3>
-              <p className="text-sm text-gray-400">Visual interface representing music by sonic characteristics</p>
+              <h3 className="feature-title">Sonic Map</h3>
+              <p className="feature-description mt-1">Visual interface representing music by sonic characteristics</p>
             </div>
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-                <Upload size={24} className="text-violet-400" />
+            <div className="feature-item text-center hover-lift">
+              <div className="w-10 h-10 rounded-lg bg-costar-gray-dark flex items-center justify-center mb-3 mx-auto">
+                <Upload size={20} />
               </div>
-              <h3 className="font-medium mb-2">P2P Sharing</h3>
-              <p className="text-sm text-gray-400">Decentralized exchange for rare tracks with provenance verification</p>
+              <h3 className="feature-title">P2P Sharing</h3>
+              <p className="feature-description mt-1">Decentralized exchange for rare tracks with provenance verification</p>
             </div>
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-                <Award size={24} className="text-violet-400" />
+            <div className="feature-item text-center hover-lift">
+              <div className="w-10 h-10 rounded-lg bg-costar-gray-dark flex items-center justify-center mb-3 mx-auto">
+                <Award size={20} />
               </div>
-              <h3 className="font-medium mb-2">Live Crates</h3>
-              <p className="text-sm text-gray-400">Time-limited thematic challenges with community voting</p>
+              <h3 className="feature-title">Live Crates</h3>
+              <p className="feature-description mt-1">Time-limited thematic challenges with community voting</p>
             </div>
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-                <Shield size={24} className="text-violet-400" />
+            <div className="feature-item text-center hover-lift cursor-pointer" onClick={() => navigateTo('proofs')}>
+              <div className="w-10 h-10 rounded-lg bg-costar-gray-dark flex items-center justify-center mb-3 mx-auto">
+                <Shield size={20} />
               </div>
-              <h3 className="font-medium mb-2">Proof of Creation</h3>
-              <p className="text-sm text-gray-400">Blockchain-based timestamp proof for your creative work</p>
+              <h3 className="feature-title">Proof of Creation</h3>
+              <p className="feature-description mt-1">Blockchain-based timestamp proof for your creative work</p>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-// Login Page
+// Login Page with CoStar styling
 function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -397,7 +505,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isArtist, setIsArtist] = useState(false);
 
-  // Login with Magic Link
   const handleMagicLogin = async (e) => {
     e.preventDefault();
     
@@ -414,11 +521,9 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
         throw new Error('Authentication system not initialized');
       }
       
-      // Get DID token from Magic
       await magicSDK.auth.loginWithMagicLink({ email });
       const didToken = await magicSDK.user.getIdToken();
       
-      // Send to backend for verification and get JWT
       const response = await fetch('http://localhost:5001/api/magic/auth', {
         method: 'POST',
         headers: {
@@ -435,7 +540,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       
       if (data.success) {
         localStorage.setItem('token', data.data.token);
-        
         const userData = { ...data.data.user, token: data.data.token };
         setUser(userData);
         navigateTo('home');
@@ -449,8 +553,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       setIsLoading(false);
     }
   };
-  
-  // Traditional login with email/password
+
   const handleTraditionalLogin = async (e) => {
     e.preventDefault();
     
@@ -463,7 +566,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Login via traditional JWT method
       const response = await fetch('http://localhost:5001/api/users/login', {
         method: 'POST',
         headers: {
@@ -476,7 +578,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       
       if (data.success) {
         localStorage.setItem('token', data.data.token);
-        
         const userData = { ...data.data.user, token: data.data.token };
         setUser(userData);
         navigateTo('home');
@@ -491,7 +592,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     }
   };
   
-  // Traditional signup
   const handleSignUp = async (e) => {
     e.preventDefault();
     
@@ -504,7 +604,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Sign up via traditional method
       const response = await fetch('http://localhost:5001/api/users/register', {
         method: 'POST',
         headers: {
@@ -522,7 +621,6 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       
       if (data.success) {
         localStorage.setItem('token', data.data.token);
-        
         const userData = { ...data.data.user, token: data.data.token };
         setUser(userData);
         navigateTo('home');
@@ -538,170 +636,172 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   };
 
   return (
-    <div className="max-w-md mx-auto">
-      <h1 className="text-3xl font-bold mb-6 text-center text-violet-500">
-        {isSignUp ? "Create Account" : "Login to REBEL"}
-      </h1>
-      
-      <div className="bg-gray-800 rounded-lg p-6">
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+    <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-hero mb-2">
+            {isSignUp ? "Join REBEL" : "Welcome back"}
+          </h1>
+          <p className="text-costar-text-muted">
+            {isSignUp 
+              ? "Create your account to start sharing music" 
+              : "Sign in to continue your journey"
+            }
+          </p>
+        </div>
         
-        {isSignUp ? (
-          // Sign up form
-          <form onSubmit={handleSignUp}>
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                required
-              />
+        <div className="costar-card">
+          {error && (
+            <div className="error-costar mb-4">
+              {error}
             </div>
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                required
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                required
-              />
-            </div>
-            <div className="mb-6">
-              <label className="flex items-center">
-                <input 
-                  type="checkbox" 
-                  checked={isArtist}
-                  onChange={(e) => setIsArtist(e.target.checked)}
-                  className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
-                />
-                <span className="ml-2 text-gray-300">Sign up as an artist</span>
-              </label>
-            </div>
-            <div className="flex flex-col gap-4">
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Creating Account...' : 'Sign Up'}
-              </button>
-              <div className="text-center text-gray-500">OR</div>
-              <button 
-                type="button" 
-                onClick={handleMagicLogin}
-                disabled={isLoading}
-                className="w-full bg-black hover:bg-gray-900 text-white font-medium py-2 px-4 rounded-lg border border-gray-600 transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Processing...' : 'Sign Up with Magic Link'}
-              </button>
-              <div className="text-center mt-4">
-                <button 
-                  type="button"
-                  onClick={() => setIsSignUp(false)}
-                  className="text-violet-400 hover:text-violet-300"
-                >
-                  Already have an account? Log in
-                </button>
+          )}
+
+          {isSignUp ? (
+            <form onSubmit={handleSignUp}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="input-costar"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="input-costar"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input-costar"
+                    required
+                  />
+                </div>
+                <div className="flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={isArtist}
+                    onChange={(e) => setIsArtist(e.target.checked)}
+                    className="w-4 h-4 mr-3"
+                  />
+                  <span className="text-sm">Sign up as an artist</span>
+                </div>
               </div>
-            </div>
-          </form>
-        ) : (
-          // Login form
-          <div>
-            <div className="mb-6">
-              <button 
-                onClick={handleMagicLogin}
-                disabled={isLoading}
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
-              >
-                <LogIn size={20} className="mr-2" />
-                {isLoading ? 'Connecting...' : 'Login with Magic Link'}
-              </button>
-            </div>
-            
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-600"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-800 text-gray-400">Or login with email/password</span>
-              </div>
-            </div>
-            
-            <form onSubmit={handleTraditionalLogin}>
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  required
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-gray-300 mb-2">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-4">
+              <div className="mt-6 space-y-3">
                 <button 
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                  className="w-full btn-primary-costar"
+                >
+                  {isLoading ? 'Creating Account...' : 'Sign Up'}
+                </button>
+                <div className="text-center text-xs text-costar-text-muted">OR</div>
+                <button 
+                  type="button" 
+                  onClick={handleMagicLogin}
+                  disabled={isLoading}
+                  className="w-full btn-secondary-costar"
+                >
+                  {isLoading ? 'Processing...' : 'Sign Up with Magic Link'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div>
+              <div className="mb-6">
+                <button 
+                  onClick={handleMagicLogin}
+                  disabled={isLoading}
+                  className="w-full btn-primary-costar flex items-center justify-center space-x-2"
+                >
+                  <LogIn size={20} />
+                  <span>{isLoading ? 'Connecting...' : 'Login with Magic Link'}</span>
+                </button>
+              </div>
+              
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-costar-border"></div>
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-2 bg-costar-card text-costar-text-muted">Or login with email/password</span>
+                </div>
+              </div>
+              
+              <form onSubmit={handleTraditionalLogin}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="input-costar"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="input-costar"
+                      required
+                    />
+                  </div>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full btn-secondary-costar mt-6"
                 >
                   {isLoading ? 'Logging In...' : 'Login'}
                 </button>
-                <div className="text-center mt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setIsSignUp(true)}
-                    className="text-violet-400 hover:text-violet-300"
-                  >
-                    Need an account? Sign up
-                  </button>
-                </div>
-                <div className="text-center">
-                  <button 
-                    type="button"
-                    onClick={onBack}
-                    className="text-gray-400 hover:text-gray-300 text-sm"
-                  >
-                    Back to Home
-                  </button>
-                </div>
-              </div>
-            </form>
+              </form>
+            </div>
+          )}
+          
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-white hover:opacity-80 transition-opacity"
+            >
+              {isSignUp 
+                ? "Already have an account? Sign in" 
+                : "Need an account? Sign up"
+              }
+            </button>
           </div>
-        )}
+          
+          <div className="mt-6 text-center">
+            <button
+              onClick={onBack}
+              className="text-sm text-costar-text-muted hover:text-white transition-colors"
+            >
+              ← Back to Home
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// Page Profil
+// Profile Page
 function ProfilePage({ user, setUser, onBack }) {
   const [formData, setFormData] = useState({
     username: user?.username || '',
@@ -786,8 +886,6 @@ function ProfilePage({ user, setUser, onBack }) {
       
       if (data.success) {
         setSuccess('Profile updated successfully');
-        
-        // Update user in state
         setUser(prev => ({
           ...prev,
           ...data.data
@@ -822,8 +920,6 @@ function ProfilePage({ user, setUser, onBack }) {
       if (data.success) {
         setSuccess('You are now registered as an artist!');
         setFormData(prev => ({ ...prev, isArtist: true }));
-        
-        // Update user in state
         setUser(prev => ({
           ...prev,
           isArtist: true
@@ -840,108 +936,118 @@ function ProfilePage({ user, setUser, onBack }) {
   };
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6 text-violet-500">Your Profile</h1>
+    <div className="max-w-4xl mx-auto p-4">
+      <div className="flex items-center mb-8">
+        <button
+          onClick={onBack}
+          className="mr-4 p-2 rounded-lg bg-costar-card hover:bg-costar-gray-dark transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="text-hero">Your Profile</h1>
+      </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <div className="bg-gray-800 rounded-lg p-6 mb-6">
+          <div className="costar-card">
             {error && (
-              <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+              <div className="error-costar mb-4">
                 {error}
               </div>
             )}
             
             {success && (
-              <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
+              <div className="success-costar mb-4">
                 {success}
               </div>
             )}
             
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Profile Picture</label>
+                <label className="block text-sm font-medium mb-2">Profile Picture</label>
                 <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 rounded-full bg-violet-600 flex items-center justify-center overflow-hidden">
-                  {user.profilePicture ? (
+                  <div className="w-16 h-16 rounded-full bg-costar-gray-dark flex items-center justify-center overflow-hidden">
+                    {user.profilePicture ? (
                       <img 
                         src={`http://localhost:5001/uploads/profiles/${user.profilePicture}`}
                         alt={user.username}
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <span className="text-2xl font-bold">{user.username?.charAt(0).toUpperCase()}</span>
+                      <span className="text-xl font-bold">{user.username?.charAt(0).toUpperCase()}</span>
                     )}
                   </div>
                   <input
                     type="file"
                     onChange={handleFileChange}
-                    className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+                    className="text-sm text-costar-text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-100"
                   />
                 </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Username</label>
-                <input
-                  type="text"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleChange}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Username</label>
+                  <input
+                    type="text"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleChange}
+                    className="input-costar"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="input-costar"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Bio</label>
+                  <textarea
+                    name="bio"
+                    value={formData.bio}
+                    onChange={handleChange}
+                    className="input-costar h-32"
+                  ></textarea>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Location</label>
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleChange}
+                    className="input-costar"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Website</label>
+                  <input
+                    type="url"
+                    name="website"
+                    value={formData.website}
+                    onChange={handleChange}
+                    className="input-costar"
+                  />
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  readOnly
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Bio</label>
-                <textarea
-                  name="bio"
-                  value={formData.bio}
-                  onChange={handleChange}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
-                ></textarea>
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Location</label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleChange}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-gray-300 mb-2">Website</label>
-                <input
-                  type="url"
-                  name="website"
-                  value={formData.website}
-                  onChange={handleChange}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
-              </div>
-              <div className="flex space-x-4">
+              <div className="flex space-x-4 mt-6">
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                  className="btn-primary-costar"
                 >
                   {isLoading ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button
                   type="button"
                   onClick={onBack}
-                  className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="btn-secondary-costar"
                 >
                   Back
                 </button>
@@ -950,15 +1056,15 @@ function ProfilePage({ user, setUser, onBack }) {
           </div>
           
           {!formData.isArtist && (
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Become an Artist</h2>
-              <p className="text-gray-300 mb-4">
+            <div className="costar-card mt-6">
+              <h2 className="text-section-title mb-4">Become an Artist</h2>
+              <p className="text-costar-text-muted mb-4">
                 Register as an artist to upload tracks and create timestamps proofs of your works.
               </p>
               <button
                 onClick={becomeArtist}
                 disabled={isLoading}
-                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                className="btn-primary-costar"
               >
                 {isLoading ? 'Processing...' : 'Register as Artist'}
               </button>
@@ -967,45 +1073,45 @@ function ProfilePage({ user, setUser, onBack }) {
         </div>
         
         <div>
-          <div className="bg-gray-800 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Wallet Information</h2>
+          <div className="costar-card mb-6">
+            <h2 className="text-section-title mb-4">Wallet Information</h2>
             {walletLoading ? (
               <div className="flex justify-center py-4">
-                <div className="w-8 h-8 border-2 border-dashed rounded-full animate-spin border-violet-600"></div>
+                <div className="loading-costar"></div>
               </div>
             ) : walletInfo ? (
               <div>
                 <div className="mb-4">
-                  <h3 className="text-gray-400 text-sm">Solana Address</h3>
-                  <p className="font-mono text-sm bg-gray-900 p-2 rounded mt-1 break-all">
+                  <h3 className="text-sm text-costar-text-muted">Solana Address</h3>
+                  <p className="text-xs font-mono bg-costar-gray-dark p-2 rounded mt-1 break-all">
                     {walletInfo.solanaAddress}
                   </p>
                 </div>
                 <div>
-                  <h3 className="text-gray-400 text-sm">Balance</h3>
-                  <p className="text-xl font-medium mt-1">{walletInfo.balance} SOL</p>
+                  <h3 className="text-sm text-costar-text-muted">Balance</h3>
+                  <p className="text-lg font-medium mt-1">{walletInfo.balance} SOL</p>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-400">No wallet information available.</p>
+              <p className="text-costar-text-muted">No wallet information available.</p>
             )}
           </div>
           
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Account Status</h2>
+          <div className="costar-card">
+            <h2 className="text-section-title mb-4">Account Status</h2>
             <div className="space-y-3">
               <div>
-                <h3 className="text-gray-400 text-sm">Account Type</h3>
+                <h3 className="text-sm text-costar-text-muted">Account Type</h3>
                 <p className="font-medium">
                   {formData.isArtist ? (
-                    <span className="text-violet-400">Artist</span>
+                    <span className="text-white">Artist</span>
                   ) : (
                     <span>Regular User</span>
                   )}
                 </p>
               </div>
               <div>
-                <h3 className="text-gray-400 text-sm">Member Since</h3>
+                <h3 className="text-sm text-costar-text-muted">Member Since</h3>
                 <p className="font-medium">
                   {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
                 </p>
@@ -1018,446 +1124,401 @@ function ProfilePage({ user, setUser, onBack }) {
   );
 }
 
-// Page Tracks
+// Tracks Page
 function TracksPage({ user, onBack, navigateTo }) {
-    const [tracks, setTracks] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [isLoading, setIsLoading] = useState(false); // For proof creation
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [activeTrackId, setActiveTrackId] = useState(null); // Track which proof is being created
-  
-    useEffect(() => {
-      fetchTracks();
-    }, []);
-  
-    const fetchTracks = async () => {
-      try {
-        const response = await fetch('http://localhost:5001/api/tracks/user', {
-          headers: {
-            'Authorization': `Bearer ${user.token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
-          } else {
-            setError(data.message || 'Failed to fetch tracks');
-          }
-        } else {
-          setError('Failed to fetch tracks');
+  const [tracks, setTracks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    fetchTracks();
+  }, []);
+
+  const fetchTracks = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/tracks/user', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
         }
-      } catch (error) {
-        console.error('Error fetching tracks:', error);
-        setError(error.message || 'Failed to fetch tracks');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-  
-    const handleCreateProof = async (trackId, e) => {
-      // Prevent any default browser behavior
-      if (e) e.preventDefault();
+      });
       
-      // Set the active track ID to show loading state on the specific button
-      setActiveTrackId(trackId);
-      setIsLoading(true);
-      setError('');
-      setSuccess('');
-      
-      try {
-        console.log(`Creating proof for track: ${trackId}`);
-        
-        const response = await fetch(`http://localhost:5001/api/tracks/${trackId}/proof`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${user.token}`,
-            'Content-Type': 'application/json'
-          },
-          // No body needed for this request
-        });
-        
+      if (response.ok) {
         const data = await response.json();
-        console.log('Proof creation response:', data);
-        
         if (data.success) {
-          setSuccess(`Proof created successfully for track: ${trackId}`);
-          // Don't navigate away - stay on the current page
+          setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
         } else {
-          setError(data.message || 'Failed to create proof');
+          setError(data.message || 'Failed to fetch tracks');
         }
-      } catch (error) {
-        console.error('Error creating proof:', error);
-        setError(error.message || 'Failed to create proof');
-      } finally {
-        setIsLoading(false);
-        setActiveTrackId(null);
+      } else {
+        setError('Failed to fetch tracks');
       }
-    };
-  
-    return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-violet-500">My Tracks</h1>
+    } catch (error) {
+      console.error('Error fetching tracks:', error);
+      setError(error.message || 'Failed to fetch tracks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="flex justify-between items-center mb-8">
+        <div className="flex items-center">
+          <button
+            onClick={onBack}
+            className="mr-4 p-2 rounded-lg bg-costar-card hover:bg-costar-gray-dark transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h1 className="text-hero">My Tracks</h1>
+        </div>
+        <button
+          onClick={() => navigateTo('upload')}
+          className="btn-primary-costar flex items-center space-x-2"
+        >
+          <Upload size={18} />
+          <span>Upload New Track</span>
+        </button>
+      </div>
+      
+      {error && (
+        <div className="error-costar mb-4">
+          {error}
+        </div>
+      )}
+      
+      {success && (
+        <div className="success-costar mb-4">
+          {success}
+        </div>
+      )}
+      
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="loading-costar"></div>
+        </div>
+      ) : tracks.length > 0 ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {tracks.map(track => (
+            <div key={track._id} className="costar-card hover-lift">
+              <div className="flex items-start">
+                <div className="w-12 h-12 rounded-lg bg-costar-gray-dark flex items-center justify-center mr-4">
+                  <Music size={20} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-card-title">{track.title}</h3>
+                  <p className="text-costar-text-muted text-sm">
+                    {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                  </p>
+                  <p className="text-costar-text-muted text-small mt-1">
+                    Uploaded {new Date(track.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              
+              {track.description && (
+                <p className="text-costar-text-muted mt-3 text-sm">{track.description}</p>
+              )}
+              
+              <div className="mt-4 flex flex-wrap gap-2">
+                {track.tags && track.tags.map(tag => (
+                  <span key={tag} className="bg-costar-gray-dark text-costar-text-muted px-2 py-1 rounded text-xs">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center text-costar-text-muted text-sm">
+                  <span className="mr-4">{track.plays || 0} plays</span>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <a 
+                    href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-ghost-costar text-xs"
+                  >
+                    Play
+                  </a>
+                  <TrackProofButton 
+                    trackId={track._id}
+                    user={user}
+                    onSuccess={(proofData) => {
+                      setSuccess(`Proof created successfully for track: ${track._id}`);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="costar-card text-center py-12">
+          <Music size={48} className="text-costar-text-muted mx-auto mb-4" />
+          <h3 className="text-section-title mb-2">No tracks yet</h3>
+          <p className="text-costar-text-muted mb-6">
+            You haven't uploaded any tracks yet. Upload your first track to get started.
+          </p>
           <button
             onClick={() => navigateTo('upload')}
-            className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center"
+            className="btn-primary-costar inline-flex items-center space-x-2"
           >
-            <Upload size={18} className="mr-2" />
-            Upload New Track
+            <Upload size={18} />
+            <span>Upload First Track</span>
           </button>
         </div>
-        
+      )}
+    </div>
+  );
+}
+
+// Upload Page
+function UploadPage({ user, onBack }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    genre: '',
+    description: '',
+    tags: '',
+    isPublic: true
+  });
+  const [audioFile, setAudioFile] = useState(null);
+  const [coverImage, setCoverImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (!user.isArtist) {
+      setError('You need to be registered as an artist to upload tracks.');
+    }
+  }, [user.isArtist]);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleAudioFileChange = (e) => {
+    setAudioFile(e.target.files[0]);
+  };
+
+  const handleCoverImageChange = (e) => {
+    setCoverImage(e.target.files[0]);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!audioFile) {
+      setError('Please select an audio file');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    setSuccess('');
+    
+    try {
+      const uploadData = new FormData();
+      uploadData.append('title', formData.title);
+      uploadData.append('genre', formData.genre);
+      uploadData.append('description', formData.description);
+      uploadData.append('isPublic', formData.isPublic);
+      
+      if (formData.tags) {
+        const tagsArray = formData.tags.split(',').map(tag => tag.trim());
+        uploadData.append('tags', tagsArray.join(','));
+      }
+      
+      uploadData.append('audioFile', audioFile);
+      
+      if (coverImage) {
+        uploadData.append('coverImage', coverImage);
+      }
+      
+      const response = await fetch('http://localhost:5001/api/tracks', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: uploadData
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess('Track uploaded successfully!');
+        setFormData({
+          title: '',
+          genre: '',
+          description: '',
+          tags: '',
+          isPublic: true
+        });
+        setAudioFile(null);
+        setCoverImage(null);
+      } else {
+        throw new Error(data.message || 'Failed to upload track');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setError(error.message || 'Failed to upload track. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-4">
+      <div className="flex items-center mb-8">
+        <button
+          onClick={onBack}
+          className="mr-4 p-2 rounded-lg bg-costar-card hover:bg-costar-gray-dark transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="text-hero">Upload Track</h1>
+      </div>
+      
+      <div className="costar-card">
         {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+          <div className="error-costar mb-4">
             {error}
           </div>
         )}
         
         {success && (
-          <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
+          <div className="success-costar mb-4">
             {success}
           </div>
         )}
         
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
-          </div>
-        ) : tracks.length > 0 ? (
-          <div className="grid gap-6 lg:grid-cols-2">
-            {tracks.map(track => (
-              <div key={track._id} className="bg-gray-800 rounded-lg overflow-hidden">
-                <div className="p-6">
-                  <div className="flex items-start">
-                    <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
-                      <Music size={20} className="text-violet-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-medium text-lg">{track.title}</h3>
-                      <p className="text-gray-400 text-sm">
-                        {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
-                      </p>
-                      <p className="text-gray-500 text-sm mt-1">
-                        Uploaded {new Date(track.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {track.description && (
-                    <p className="text-gray-300 mt-3 text-sm">{track.description}</p>
-                  )}
-                  
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {track.tags && track.tags.map(tag => (
-                      <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="flex items-center text-gray-400 text-sm">
-                      <span className="mr-4">{track.plays || 0} plays</span>
-                    </div>
-                    
-                    <div className="flex space-x-2">
-                      <a 
-                        href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
-                      >
-                        Play
-                      </a>
-                      <TrackProofButton 
-                      trackId={track._id}
-                      user={user}
-                      onSuccess={(proofData) => {
-                        setSuccess(`Proof created successfully for track: ${track._id}`);
-                      }}
-/>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-gray-800 rounded-lg p-8 text-center">
-            <Music size={48} className="text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-medium mb-2">No tracks yet</h3>
-            <p className="text-gray-400 mb-6">
-              You haven't uploaded any tracks yet. Upload your first track to get started.
-            </p>
-            <button
-              onClick={() => navigateTo('upload')}
-              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
-            >
-              <Upload size={18} className="mr-2" />
-              Upload First Track
-            </button>
-          </div>
-        )}
-        
-        <div className="mt-6">
-          <button
-            onClick={onBack}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-// Upload Page
-function UploadPage({ user, onBack }) {
-    const [formData, setFormData] = useState({
-      title: '',
-      genre: '',
-      description: '',
-      tags: '',
-      isPublic: true
-    });
-    const [audioFile, setAudioFile] = useState(null);
-    const [coverImage, setCoverImage] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-  
-    // Check that user is an artist
-    useEffect(() => {
-      if (!user.isArtist) {
-        setError('You need to be registered as an artist to upload tracks.');
-      }
-    }, [user.isArtist]);
-  
-    const handleChange = (e) => {
-      const { name, value, type, checked } = e.target;
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' ? checked : value
-      }));
-    };
-  
-    const handleAudioFileChange = (e) => {
-      setAudioFile(e.target.files[0]);
-    };
-  
-    const handleCoverImageChange = (e) => {
-      setCoverImage(e.target.files[0]);
-    };
-  
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-      
-      if (!audioFile) {
-        setError('Please select an audio file');
-        return;
-      }
-      
-      setIsLoading(true);
-      setError('');
-      setSuccess('');
-      
-      try {
-        const uploadData = new FormData();
-        
-        // Add form data fields
-        uploadData.append('title', formData.title);
-        uploadData.append('genre', formData.genre);
-        uploadData.append('description', formData.description);
-        uploadData.append('isPublic', formData.isPublic);
-        
-        // Convert tags string to array and add them properly
-        if (formData.tags) {
-          const tagsArray = formData.tags.split(',').map(tag => tag.trim());
-          uploadData.append('tags', tagsArray.join(','));
-        }
-        
-        // Add files
-        uploadData.append('audioFile', audioFile);
-        
-        if (coverImage) {
-          uploadData.append('coverImage', coverImage);
-        }
-        
-        console.log('Uploading track with data:', {
-          title: formData.title,
-          genre: formData.genre,
-          hasAudioFile: !!audioFile,
-          hasCoverImage: !!coverImage
-        });
-        
-        const response = await fetch('http://localhost:5001/api/tracks', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${user.token}`
-            // Don't set Content-Type with FormData - it will be set automatically
-          },
-          body: uploadData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          setSuccess('Track uploaded successfully!');
-          setFormData({
-            title: '',
-            genre: '',
-            description: '',
-            tags: '',
-            isPublic: true
-          });
-          setAudioFile(null);
-          setCoverImage(null);
-        } else {
-          throw new Error(data.message || 'Failed to upload track');
-        }
-      } catch (error) {
-        console.error('Upload error:', error);
-        setError(error.message || 'Failed to upload track. Please try again.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-  
-    return (
-      <div>
-        <h1 className="text-3xl font-bold mb-6 text-violet-500">Upload Track</h1>
-        
-        <div className="bg-gray-800 rounded-lg p-6">
-          {error && (
-            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-              {error}
-            </div>
-          )}
-          
-          {success && (
-            <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
-              {success}
-            </div>
-          )}
-          
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Title *</label>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Title *</label>
               <input
                 type="text"
                 name="title"
                 value={formData.title}
                 onChange={handleChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="input-costar"
                 required
               />
             </div>
             
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Genre *</label>
+            <div>
+              <label className="block text-sm font-medium mb-2">Genre *</label>
               <input
                 type="text"
                 name="genre"
                 value={formData.genre}
                 onChange={handleChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="input-costar"
                 required
               />
             </div>
             
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Description</label>
+            <div>
+              <label className="block text-sm font-medium mb-2">Description</label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
+                className="input-costar h-32"
               ></textarea>
             </div>
             
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Tags (comma separated)</label>
+            <div>
+              <label className="block text-sm font-medium mb-2">Tags (comma separated)</label>
               <input
                 type="text"
                 name="tags"
                 value={formData.tags}
                 onChange={handleChange}
                 placeholder="electronic, ambient, experimental"
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="input-costar"
               />
             </div>
             
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Audio File *</label>
+            <div>
+              <label className="block text-sm font-medium mb-2">Audio File *</label>
               <input
                 type="file"
                 accept="audio/*"
                 onChange={handleAudioFileChange}
-                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+                className="text-sm text-costar-text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-100"
                 required
               />
-              <p className="mt-1 text-gray-500 text-xs">
+              <p className="mt-1 text-xs text-costar-text-muted">
                 Supported formats: MP3, WAV, FLAC, OGG (max 30MB)
               </p>
             </div>
             
-            <div className="mb-6">
-              <label className="block text-gray-300 mb-2">Cover Image (optional)</label>
+            <div>
+              <label className="block text-sm font-medium mb-2">Cover Image (optional)</label>
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleCoverImageChange}
-                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+                className="text-sm text-costar-text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-100"
               />
-              <p className="mt-1 text-gray-500 text-xs">
+              <p className="mt-1 text-xs text-costar-text-muted">
                 Recommended: 800x800 JPG or PNG (max 2MB)
               </p>
             </div>
             
-            <div className="mb-6">
-              <label className="flex items-center">
-                <input 
-                  type="checkbox"
-                  name="isPublic"
-                  checked={formData.isPublic}
-                  onChange={handleChange}
-                  className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
-                />
-                <span className="ml-2 text-gray-300">Make this track public</span>
-              </label>
+            <div className="flex items-center">
+              <input 
+                type="checkbox"
+                name="isPublic"
+                checked={formData.isPublic}
+                onChange={handleChange}
+                className="w-4 h-4 mr-3"
+              />
+              <span className="text-sm">Make this track public</span>
             </div>
-            
-            <div className="flex space-x-4">
-              <button
-                type="submit"
-                disabled={isLoading || !user.isArtist}
-                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Uploading...' : 'Upload Track'}
-              </button>
-              <button
-                type="button"
-                onClick={onBack}
-                className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-              >
-                Back
-              </button>
-            </div>
-          </form>
-        </div>
+          </div>
+          
+          <div className="flex space-x-4 mt-8">
+            <button
+              type="submit"
+              disabled={isLoading || !user.isArtist}
+              className="btn-primary-costar"
+            >
+              {isLoading ? 'Uploading...' : 'Upload Track'}
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="btn-secondary-costar"
+            >
+              Back
+            </button>
+          </div>
+        </form>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
 // Proofs Page
 function ProofsPage({ user, onBack }) {
   const [proofs, setProofs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [selectedProof, setSelectedProof] = useState(null);
+  const [verificationFile, setVerificationFile] = useState(null);
+  const [verifyResult, setVerifyResult] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   useEffect(() => {
     fetchProofs();
@@ -1465,244 +1526,316 @@ function ProofsPage({ user, onBack }) {
 
   const fetchProofs = async () => {
     try {
-      console.log("Attempting to fetch proofs with token:", user.token ? "Token exists" : "No token");
-      
+      setLoading(true);
       const response = await fetch('http://localhost:5001/api/proofs/user/me', {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }
       });
       
-      console.log("Proofs API response status:", response.status);
-      console.log("Current user ID:", user._id || user.id);
+      const data = await response.json();
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Proofs data:", data);
-        
-        // In your fetchProofs function:
-        if (data.success) {
-          console.log("Complete data structure:", data);
-          
-          // Check the structure of data.data
-          if (data.data && data.data.proofs) {
-            setProofs(data.data.proofs);
-            console.log("Found proofs:", data.data.proofs.length);
-          } else if (data.data && Array.isArray(data.data)) {
-            // In case proofs are directly in data.data as an array
-            setProofs(data.data);
-            console.log("Found proofs (direct array):", data.data.length);
-          } else {
-            console.error("Unexpected data structure:", data.data);
-            setProofs([]);
-          }
-        } else {
-          setError(data.message || 'Failed to fetch proofs');
-        }
+      if (data.success) {
+        setProofs(data.data.proofs || []);
+      } else {
+        setError(data.message || 'Failed to fetch proofs');
       }
     } catch (error) {
-      console.error('Error fetching proofs (details):', error);
+      console.error('Error fetching proofs:', error);
       setError(error.message || 'Failed to fetch proofs');
     } finally {
       setLoading(false);
     }
   };
-  
-    const payForProof = async (proofId) => {
-      try {
-        const response = await fetch(`http://localhost:5001/api/proofs/pay/${proofId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${user.token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          // Refresh proofs list
-          fetchProofs();
-        } else {
-          setError(data.message || 'Payment failed');
+
+  const payForProof = async (proofId) => {
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+
+      const response = await fetch(`http://localhost:5001/api/proofs/pay/${proofId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${user.token}`,
+          'Content-Type': 'application/json'
         }
-      } catch (error) {
-        console.error('Payment error:', error);
-        setError(error.message || 'Payment failed');
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess('Payment successful! Your proof is being processed.');
+        fetchProofs();
+      } else {
+        setError(data.message || 'Payment failed');
       }
-    };
-  
-    const downloadProof = async (proofId) => {
-      try {
-        const response = await fetch(`http://localhost:5001/api/proofs/download/${proofId}`, {
-          headers: {
-            'Authorization': `Bearer ${user.token}`
-          }
-        });
-        
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.style.display = 'none';
-          a.href = url;
-          a.download = `proof_${proofId}.json`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-        } else {
-          const errorData = await response.json();
-          setError(errorData.message || 'Failed to download proof');
+    } catch (error) {
+      console.error('Payment error:', error);
+      setError(error.message || 'Payment failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadProof = async (proofId) => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const response = await fetch(`http://localhost:5001/api/proofs/download/${proofId}`, {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
         }
-      } catch (error) {
-        console.error('Download error:', error);
-        setError(error.message || 'Failed to download proof');
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to download proof');
       }
-    };
-  
-    return (
-      <div>
-        <h1 className="text-3xl font-bold mb-6 text-violet-500">My Proofs of Creation</h1>
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
         
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename || `proof_${proofId}.json`;
+        document.body.appendChild(a);
+        a.click();
         
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        setSuccess('Proof downloaded successfully');
+      } else {
+        throw new Error(result.message || 'Failed to download proof');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      setError(error.message || 'Failed to download proof');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'CONFIRMED':
+        return 'text-green-300 bg-green-900 bg-opacity-20';
+      case 'PENDING':
+        return 'text-yellow-300 bg-yellow-900 bg-opacity-20';
+      case 'FAILED':
+      case 'REJECTED':
+        return 'text-red-300 bg-red-900 bg-opacity-20';
+      default:
+        return 'text-costar-text-muted bg-costar-gray-dark';
+    }
+  };
+
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="flex items-center mb-8">
+        <button
+          onClick={onBack}
+          className="mr-4 p-3 rounded-lg bg-costar-card hover:bg-costar-gray-dark transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <h1 className="text-hero">Proof of Creation</h1>
+          <p className="text-costar-text-muted">Manage your blockchain timestamp proofs</p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="error-costar mb-6 flex items-start">
+          <AlertTriangle size={20} className="mr-3 mt-0.5 flex-shrink-0" />
+          <div>
+            <p>{error}</p>
+            <button
+              onClick={() => setError('')}
+              className="text-xs mt-1 hover:text-white transition-colors"
+            >
+              Dismiss
+            </button>
           </div>
-        ) : proofs.length > 0 ? (
-          <div className="space-y-6">
-            {proofs.map(proof => (
-              <div key={proof._id} className="bg-gray-800 rounded-lg overflow-hidden">
-                <div className="p-6">
-                  <div className="flex items-start">
-                    <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
-                      <Shield size={20} className="text-violet-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-medium text-lg">{proof.title}</h3>
-                      <p className="text-gray-400 text-sm">
-                        Created: {new Date(proof.createdAt).toLocaleDateString()}
-                      </p>
-                      <div className="flex items-center mt-1">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          proof.status === 'CONFIRMED' 
-                            ? 'bg-green-900/50 text-green-300' 
-                            : proof.status === 'PENDING' 
-                            ? 'bg-yellow-900/50 text-yellow-300'
-                            : 'bg-red-900/50 text-red-300'
-                        }`}>
-                          {proof.status}
-                        </span>
-                        {proof.blockchain?.transactionId && (
-                          
-                          <a
-                          href={`https://explorer.solana.com/tx/${proof.blockchain.transactionId}?cluster=${proof.blockchain.network}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-2 text-xs text-violet-400 hover:underline"
-                        >
-                          View on Explorer
-                        </a>
-                        
-                        )}
-                      </div>
-                    </div>
+        </div>
+      )}
+      
+      {success && (
+        <div className="success-costar mb-6 flex items-start">
+          <CheckCircle size={20} className="mr-3 mt-0.5 flex-shrink-0" />
+          <div>
+            <p>{success}</p>
+            <button
+              onClick={() => setSuccess('')}
+              className="text-xs mt-1 hover:text-white transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="loading-costar"></div>
+        </div>
+      ) : proofs.length > 0 ? (
+        <div className="space-y-4">
+          {proofs.map(proof => (
+            <div key={proof._id} className="costar-card hover-lift">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between">
+                <div className="flex items-center mb-4 lg:mb-0">
+                  <div className="bg-costar-gray-dark rounded-lg p-3 mr-4">
+                    <Shield size={24} />
                   </div>
-                  
-                  <div className="mt-3">
-                    <div className="font-mono text-xs bg-gray-900 p-2 rounded break-all">
-                      {proof.contentHash}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="text-sm text-gray-400">
-                      Version: {proof.version}
-                    </div>
-                    
-                    <div className="flex space-x-2">
-                      {proof.payment?.isPaid ? (
-                        proof.status === 'CONFIRMED' ? (
-                          <button
-                            onClick={() => downloadProof(proof._id)}
-                            className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-1 px-3 rounded transition-colors flex items-center"
-                          >
-                            Download Proof
-                          </button>
-                        ) : (
-                          <span className="text-yellow-400 text-sm">Processing...</span>
-                        )
-                      ) : (
-                        <button
-                          onClick={() => payForProof(proof._id)}
-                          className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
-                        >
-                          Pay {proof.payment?.cost || 10} RP
-                        </button>
-                      )}
+                  <div>
+                    <h2 className="text-card-title">{proof.title}</h2>
+                    <div className="flex items-center mt-1 text-sm text-costar-text-muted">
+                      <span>Created: {formatDate(proof.createdAt)}</span>
+                      <span className="mx-2">•</span>
+                      <span>Version {proof.version}</span>
+                      <span className="mx-2">•</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          proof.status
+                        )}`}
+                      >
+                        {proof.status}
+                      </span>
                     </div>
                   </div>
                 </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {proof.status === 'CONFIRMED' && proof.payment?.isPaid && (
+                    <button
+                      onClick={() => downloadProof(proof._id)}
+                      className="btn-primary-costar flex items-center space-x-2 text-xs"
+                    >
+                      <Download size={16} />
+                      <span>Download Proof</span>
+                    </button>
+                  )}
+                  
+                  {proof.blockchain?.transactionId && (
+                    <a
+                      href={`https://explorer.solana.com/tx/${proof.blockchain.transactionId}?cluster=${proof.blockchain.network || 'devnet'}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-secondary-costar flex items-center space-x-2 text-xs"
+                    >
+                      <ExternalLink size={16} />
+                      <span>View on Explorer</span>
+                    </a>
+                  )}
+                  
+                  {!proof.payment?.isPaid && (
+                    <button
+                      onClick={() => payForProof(proof._id)}
+                      className="btn-primary-costar text-xs"
+                    >
+                      Pay {proof.payment?.cost || 10} RP
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
+              
+              <div className="mt-4">
+                <div className="text-sm text-costar-text-muted mb-1">Content Hash</div>
+                <div className="bg-costar-gray-dark p-3 rounded text-xs font-mono overflow-x-auto">
+                  {proof.contentHash}
+                </div>
+              </div>
+              
+              {proof.blockchain?.pdaAddress && (
+                <div className="mt-4">
+                  <div className="text-sm text-costar-text-muted mb-1">Blockchain Address</div>
+                  <div className="bg-costar-gray-dark p-3 rounded text-xs font-mono overflow-x-auto">
+                    {proof.blockchain.pdaAddress}
+                  </div>
+                </div>
+              )}
+              
+              {proof.status === 'PENDING' && proof.payment?.isPaid && (
+                <div className="mt-4 flex items-center text-yellow-300 text-sm">
+                  <Clock size={16} className="mr-2" />
+                  Your proof is being processed on the blockchain...
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="costar-card text-center py-12">
+          <div className="bg-costar-gray-dark rounded-full p-4 inline-flex mb-4">
+            <Shield size={40} />
           </div>
-        ) : (
-          <div className="bg-gray-800 rounded-lg p-8 text-center">
-            <Shield size={48} className="text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-medium mb-2">No proofs yet</h3>
-            <p className="text-gray-400 mb-6">
-              You haven't created any proofs of creation yet.
-            </p>
-            <button
-              onClick={() => window.location.href = '/tracks'}
-              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
-            >
-              <Music size={18} className="mr-2" />
-              Go to My Tracks
-            </button>
-          </div>
-        )}
-        
-        <div className="mt-6">
+          <h2 className="text-section-title mb-2">No Proofs Yet</h2>
+          <p className="text-costar-text-muted mb-6">
+            You haven't created any proofs of creation for your tracks yet.
+          </p>
           <button
-            onClick={onBack}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            onClick={() => window.location.href = '/tracks'}
+            className="btn-primary-costar"
           >
-            Back
+            Create Your First Proof
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+
+
+// Help Page
+function HelpPage({ onBack }) {
+  return (
+    <div className="max-w-3xl mx-auto p-4">
+      <div className="flex items-center mb-8">
+        <button
+          onClick={onBack}
+          className="mr-4 p-2 rounded-lg bg-costar-card hover:bg-costar-gray-dark transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="text-hero">About REBEL</h1>
       </div>
-    );
-  }
-  
-  // Help Page
-  function HelpPage({ onBack }) {
-    return (
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-violet-500">About REBEL</h1>
-        
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
-          <p className="text-gray-300 mb-4">
+      
+      <div className="space-y-6">
+        <div className="costar-card">
+          <h2 className="text-section-title mb-4">Our Vision</h2>
+          <p className="text-costar-text-muted mb-4">
             REBEL is the definitive anti-algorithmic sanctuary for underground music, 
             where human curation trumps AI recommendations, restoring cultural value and 
             financial sustainability to authentic electronic and experimental music scenes.
           </p>
-          <p className="text-gray-300">
+          <p className="text-costar-text-muted">
             We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
             where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
             infrastructure that rewards genuine cultural contribution rather than algorithmic metrics.
           </p>
         </div>
         
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">The Problem</h2>
-          <ul className="list-disc pl-5 text-gray-300 space-y-2 mb-4">
+        <div className="costar-card">
+          <h2 className="text-section-title mb-4">The Problem</h2>
+          <ul className="list-disc pl-5 text-costar-text-muted space-y-2 mb-4">
             <li>90% of music industry revenues are distributed to only 2% of artists</li>
             <li>Algorithmic platforms create a discovery barrier for niche/underground artists</li>
             <li>Homogenization of music due to algorithm-based recommendations (-30% sonic diversity)</li>
@@ -1711,57 +1844,59 @@ function ProofsPage({ user, onBack }) {
           </ul>
         </div>
         
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Core Features</h2>
+        <div className="costar-card">
+          <h2 className="text-section-title mb-4">Core Features</h2>
           <div className="space-y-4">
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Sonic Map</h3>
-              <p className="text-gray-300">Visual interface representing music by sonic characteristics (texture, energy, experimentation) rather than popularity metrics.</p>
+              <h3 className="text-white font-medium mb-1">Sonic Map</h3>
+              <p className="text-costar-text-muted">Visual interface representing music by sonic characteristics (texture, energy, experimentation) rather than popularity metrics.</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">P2P Sharing System</h3>
-              <p className="text-gray-300">Decentralized exchange for rare/exclusive tracks with provenance verification and fair-value pricing determined by community.</p>
+              <h3 className="text-white font-medium mb-1">P2P Sharing System</h3>
+              <p className="text-costar-text-muted">Decentralized exchange for rare/exclusive tracks with provenance verification and fair-value pricing determined by community.</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Live Crates/Sonic Vaults</h3>
-              <p className="text-gray-300">Time-limited thematic challenges with community voting system and rewards for curation and discovery contributions.</p>
+              <h3 className="text-white font-medium mb-1">Live Crates/Sonic Vaults</h3>
+              <p className="text-costar-text-muted">Time-limited thematic challenges with community voting system and rewards for curation and discovery contributions.</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Proof of Creation</h3>
-              <p className="text-gray-300">Blockchain-based timestamp proofs that protect your work with verifiable evidence of creation time and ownership.</p>
+              <h3 className="text-white font-medium mb-1">Proof of Creation</h3>
+              <p className="text-costar-text-muted">Blockchain-based timestamp proofs that protect your work with verifiable evidence of creation time and ownership.</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">How to Use REBEL</h2>
+        <div className="costar-card">
+          <h2 className="text-section-title mb-4">How to Use REBEL</h2>
           <div className="space-y-4">
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Registration</h3>
-              <p className="text-gray-300">Sign up using Magic Link for passwordless authentication, or use traditional email/password. Artists need to register as artists to upload tracks.</p>
+              <h3 className="text-white font-medium mb-1">Registration</h3>
+              <p className="text-costar-text-muted">Sign up using Magic Link for passwordless authentication, or use traditional email/password. Artists need to register as artists to upload tracks.</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Uploading Tracks</h3>
-              <p className="text-gray-300">Once registered as an artist, you can upload tracks with metadata including title, genre, description, and tags.</p>
+              <h3 className="text-white font-medium mb-1">Uploading Tracks</h3>
+              <p className="text-costar-text-muted">Once registered as an artist, you can upload tracks with metadata including title, genre, description, and tags.</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Creating Proofs</h3>
-              <p className="text-gray-300">After uploading a track, you can create a blockchain timestamp proof. The first proof for each track is free, subsequent proofs cost Rebellion Points (RP).</p>
+              <h3 className="text-white font-medium mb-1">Creating Proofs</h3>
+              <p className="text-costar-text-muted">After uploading a track, you can create a blockchain timestamp proof. The first proof for each track is free, subsequent proofs cost Rebellion Points (RP).</p>
             </div>
             <div>
-              <h3 className="text-violet-400 font-medium mb-1">Account Abstraction</h3>
-              <p className="text-gray-300">Our Web3 infrastructure is invisible to you - we handle all the blockchain interactions while providing the benefits of decentralization.</p>
+              <h3 className="text-white font-medium mb-1">Account Abstraction</h3>
+              <p className="text-costar-text-muted">Our Web3 infrastructure is invisible to you - we handle all the blockchain interactions while providing the benefits of decentralization.</p>
             </div>
           </div>
         </div>
         
         <button
           onClick={onBack}
-          className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          className="btn-primary-costar"
         >
           Back to Home
         </button>
       </div>
-    );
-  }
-  export default App;
+    </div>
+  );
+}
+
+export default App;
