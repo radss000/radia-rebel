@@ -8,9 +8,12 @@ yarn.lock
 
 # Environnement
 .env
+*.env.local
 
 # Fichiers de build
 /build
+dist/
+programs/*/target/
 
 # Fichiers d'upload
 /public/uploads/*
@@ -20,6 +23,12 @@ yarn.lock
 # Logs
 logs
 *.log
+
+# Python
+venv/
+*/venv/
+__pycache__/
+*.py[cod]
 
 # Système d'exploitation
 .DS_Store
