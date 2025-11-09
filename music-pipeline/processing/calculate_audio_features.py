@@ -1,293 +1,178 @@
 #!/usr/bin/env python3
 """
-REBEL Music Database - Audio Features Calculator
-Estimates audio features (energy, danceability, etc.) based on genre/tags
-Since MusicBrainz doesn't provide these, we estimate them intelligently
+Backfill analysis jobs for tracks using the real audio worker.
+
+This CLI inspects the tracks/audio_assets tables, figures out which jobs are
+still missing (preview cache, audio features, embedding, position), and
+enqueues them through the shared Redis/RQ queue so the existing workers can
+process them asynchronously.
 """
 
-import os
+from __future__ import annotations
+
+import argparse
 import logging
+from typing import Iterable, List
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import random
-from typing import Dict, Optional
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from database.utils import DB_CONFIG
+from jobs.queue import enqueue_analysis_job
 
-DB_CONFIG = {
-    'host': os.getenv('POSTGRES_HOST', 'localhost'),
-    'port': int(os.getenv('POSTGRES_PORT', 5432)),
-    'database': os.getenv('POSTGRES_DB', 'rebel_music'),
-    'user': os.getenv('POSTGRES_USER', 'rebel'),
-    'password': os.getenv('POSTGRES_PASSWORD', 'rebel_password')
-}
+logger = logging.getLogger("analysis_backfill")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Genre-based feature profiles
-GENRE_PROFILES = {
-    'electronic': {'energy': 0.75, 'danceability': 0.80, 'acousticness': 0.10, 'bass': 0.75, 'brightness': 0.60},
-    'techno': {'energy': 0.85, 'danceability': 0.85, 'acousticness': 0.05, 'bass': 0.80, 'brightness': 0.45},
-    'minimal techno': {'energy': 0.70, 'danceability': 0.80, 'acousticness': 0.05, 'bass': 0.75, 'brightness': 0.40},
-    'house': {'energy': 0.75, 'danceability': 0.85, 'acousticness': 0.10, 'bass': 0.70, 'brightness': 0.55},
-    'deep house': {'energy': 0.65, 'danceability': 0.75, 'acousticness': 0.15, 'bass': 0.75, 'brightness': 0.50},
-    'idm': {'energy': 0.60, 'danceability': 0.55, 'acousticness': 0.15, 'bass': 0.50, 'brightness': 0.65},
-    'ambient': {'energy': 0.30, 'danceability': 0.20, 'acousticness': 0.70, 'bass': 0.30, 'brightness': 0.75},
-    'dubstep': {'energy': 0.80, 'danceability': 0.75, 'acousticness': 0.05, 'bass': 0.90, 'brightness': 0.40},
-    'drum and bass': {'energy': 0.90, 'danceability': 0.80, 'acousticness': 0.05, 'bass': 0.85, 'brightness': 0.60},
-    'jungle': {'energy': 0.85, 'danceability': 0.75, 'acousticness': 0.05, 'bass': 0.85, 'brightness': 0.55},
-    'hip-hop': {'energy': 0.70, 'danceability': 0.75, 'acousticness': 0.15, 'bass': 0.80, 'brightness': 0.45},
-    'hip hop': {'energy': 0.70, 'danceability': 0.75, 'acousticness': 0.15, 'bass': 0.80, 'brightness': 0.45},
-    'jazz': {'energy': 0.55, 'danceability': 0.50, 'acousticness': 0.75, 'bass': 0.50, 'brightness': 0.70},
-    'jazz fusion': {'energy': 0.65, 'danceability': 0.55, 'acousticness': 0.60, 'bass': 0.60, 'brightness': 0.65},
-    'breakbeat': {'energy': 0.80, 'danceability': 0.80, 'acousticness': 0.10, 'bass': 0.75, 'brightness': 0.55},
-    'trance': {'energy': 0.80, 'danceability': 0.85, 'acousticness': 0.05, 'bass': 0.70, 'brightness': 0.70},
-    'acid house': {'energy': 0.85, 'danceability': 0.90, 'acousticness': 0.05, 'bass': 0.75, 'brightness': 0.60},
-    'experimental': {'energy': 0.50, 'danceability': 0.35, 'acousticness': 0.40, 'bass': 0.45, 'brightness': 0.60},
-    'indie': {'energy': 0.60, 'danceability': 0.55, 'acousticness': 0.50, 'bass': 0.50, 'brightness': 0.65},
-    'rock': {'energy': 0.75, 'danceability': 0.50, 'acousticness': 0.20, 'bass': 0.65, 'brightness': 0.70},
-    'pop': {'energy': 0.70, 'danceability': 0.75, 'acousticness': 0.25, 'bass': 0.60, 'brightness': 0.75},
-}
+DEFAULT_STEPS = ("preview_fetch", "audio_features", "embedding", "position")
+ACTIVE_STATUSES = {"queued", "running"}
 
-# Default profile
-DEFAULT_PROFILE = {'energy': 0.60, 'danceability': 0.60, 'acousticness': 0.40, 'bass': 0.60, 'brightness': 0.60}
 
-class AudioFeaturesCalculator:
-    """Calculate audio features for tracks based on metadata"""
-    
-    def __init__(self, db_config: dict):
-        self.conn = psycopg2.connect(**db_config)
-        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-    
-    def calculate_features(self):
-        """Calculate features for all tracks"""
-        
-        # Get tracks without features
-        self.cursor.execute("""
-            SELECT id, artist, title, tags, duration_sec
-            FROM tracks
-            WHERE energy IS NULL
-        """)
-        
-        tracks = self.cursor.fetchall()
-        logger.info(f"Calculating features for {len(tracks)} tracks...")
-        
-        if len(tracks) == 0:
-            logger.info("All tracks already have features!")
+def fetch_candidates(conn, limit: int) -> List[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                t.id AS track_id,
+                t.title,
+                t.artist,
+                t.energy,
+                t.danceability,
+                t.acousticness,
+                t.bass,
+                t.brightness,
+                t.valence,
+                t.bpm,
+                t.embedding_id,
+                t.position_x,
+                t.position_y,
+                t.position_z,
+                aa.id AS audio_asset_id,
+                aa.fetch_status,
+                aa.storage_path,
+                aa.provider_type,
+                aa.provider_track_id
+            FROM audio_assets aa
+            JOIN tracks t ON t.id = aa.track_id
+            WHERE aa.deleted_at IS NULL
+            ORDER BY t.updated_at DESC NULLS LAST
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return cursor.fetchall()
+
+
+def job_is_pending(conn, job_type: str, track_id: int | None, audio_asset_id: str | None) -> bool:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM analysis_jobs
+            WHERE job_type = %s
+              AND status = ANY(%s)
+              AND (%s::int IS NULL OR track_id = %s)
+              AND (%s::uuid IS NULL OR audio_asset_id = %s::uuid)
+            LIMIT 1
+            """,
+            (
+                job_type,
+                list(ACTIVE_STATUSES),
+                track_id,
+                track_id,
+                audio_asset_id,
+                audio_asset_id,
+            ),
+        )
+        return cursor.fetchone() is not None
+
+
+def needs_features(row: dict) -> bool:
+    fields = ("energy", "danceability", "acousticness", "bass", "brightness", "valence", "bpm")
+    return any(row.get(field) is None for field in fields)
+
+
+def determine_jobs(row: dict, requested_steps: Iterable[str]) -> List[str]:
+    jobs: List[str] = []
+    if "preview_fetch" in requested_steps:
+        if not row.get("storage_path") or row.get("fetch_status") != "fetched":
+            jobs.append("preview_fetch")
+    if "audio_features" in requested_steps and needs_features(row):
+        jobs.append("audio_features")
+    if "embedding" in requested_steps and row.get("embedding_id") is None:
+        jobs.append("embedding")
+    if "position" in requested_steps and row.get("position_x") is None:
+        jobs.append("position")
+    return jobs
+
+
+def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry_run: bool, conn) -> None:
+    for job_type in job_types:
+        track_id = row.get("track_id")
+        audio_asset_id = row.get("audio_asset_id")
+        if job_type in {"preview_fetch", "audio_features"} and not audio_asset_id:
+            logger.warning("Track %s has no audio asset; skipping %s", track_id, job_type)
+            continue
+
+        if job_is_pending(
+            conn,
+            job_type,
+            track_id if job_type in {"audio_features", "embedding", "position"} else None,
+            audio_asset_id if job_type in {"preview_fetch", "audio_features"} else None,
+        ):
+            logger.debug("Track %s already has a pending %s job", track_id, job_type)
+            continue
+
+        if dry_run:
+            logger.info("[dry-run] Would enqueue %s for track=%s asset=%s", job_type, track_id, audio_asset_id)
+            continue
+
+        job_row, _ = enqueue_analysis_job(
+            job_type=job_type,
+            track_id=track_id if job_type in {"audio_features", "embedding", "position"} else None,
+            audio_asset_id=str(audio_asset_id) if audio_asset_id and job_type in {"preview_fetch", "audio_features"} else None,
+            provider_type=row.get("provider_type"),
+            provider_track_id=row.get("provider_track_id"),
+            requested_by=requested_by,
+        )
+        logger.info("Enqueued %s for track %s (job %s)", job_type, track_id, job_row["id"])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Backfill analysis jobs using cached audio previews.")
+    parser.add_argument(
+        "--steps",
+        default=",".join(DEFAULT_STEPS),
+        help="Comma-separated list of steps to enqueue (default: preview_fetch,audio_features,embedding,position)",
+    )
+    parser.add_argument("--limit", type=int, default=200, help="Maximum number of tracks to inspect")
+    parser.add_argument("--dry-run", action="store_true", help="Log actions without enqueuing jobs")
+    parser.add_argument(
+        "--requested-by",
+        default="backfill-cli",
+        help="Value stored in analysis_jobs.requested_by for traceability",
+    )
+    args = parser.parse_args()
+
+    requested_steps = tuple(step.strip() for step in args.steps.split(",") if step.strip())
+    invalid = set(requested_steps) - set(DEFAULT_STEPS)
+    if invalid:
+        raise SystemExit(f"Invalid step(s): {', '.join(sorted(invalid))}. Supported: {', '.join(DEFAULT_STEPS)}")
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        candidates = fetch_candidates(conn, args.limit)
+        if not candidates:
+            logger.info("No tracks with audio assets found.")
             return
-        
-        success_count = 0
-        
-        for track in tracks:
-            try:
-                # Extract genre from tags
-                genre = self._extract_genre(track['tags'])
-                
-                # Get base features from genre
-                features = self._get_genre_features(genre)
-                
-                # Add variation (±10%)
-                features = self._add_variation(features)
-                
-                # Estimate BPM from genre
-                bpm = self._estimate_bpm(genre)
-                
-                # Update database
-                self.cursor.execute("""
-                    UPDATE tracks
-                    SET 
-                        energy = %s,
-                        danceability = %s,
-                        acousticness = %s,
-                        bass = %s,
-                        brightness = %s,
-                        bpm = %s,
-                        genre = %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                """, (
-                    features['energy'],
-                    features['danceability'],
-                    features['acousticness'],
-                    features['bass'],
-                    features['brightness'],
-                    bpm,
-                    genre,
-                    track['id']
-                ))
-                
-                success_count += 1
-                
-                if success_count % 50 == 0:
-                    self.conn.commit()
-                    logger.info(f"  ✓ Processed {success_count}/{len(tracks)} tracks")
-                
-            except Exception as e:
-                logger.error(f"Error processing track {track['id']}: {e}")
+        logger.info("Scanning %s tracks for missing jobs (%s)", len(candidates), ", ".join(requested_steps))
+        for row in candidates:
+            jobs = determine_jobs(row, requested_steps)
+            if not jobs:
                 continue
-        
-        self.conn.commit()
-        logger.info(f"\n✅ Calculated features for {success_count} tracks")
-    
-    def _extract_genre(self, tags: list) -> str:
-        """Extract main genre from tags"""
-        if not tags:
-            return 'electronic'
-        
-        # Priority order for genre detection
-        genre_keywords = [
-            'techno', 'house', 'ambient', 'idm', 'dubstep',
-            'drum and bass', 'jungle', 'breakbeat', 'trance',
-            'hip-hop', 'hip hop', 'jazz', 'experimental', 'indie', 'rock', 'pop'
-        ]
-        
-        # Convert tags to lowercase string
-        tags_str = ' '.join(tags).lower()
-        
-        # Find first matching genre
-        for keyword in genre_keywords:
-            if keyword in tags_str:
-                return keyword
-        
-        # Fallback
-        return 'electronic'
-    
-    def _get_genre_features(self, genre: str) -> Dict[str, float]:
-        """Get feature profile for genre"""
-        genre_lower = genre.lower()
-        
-        # Try exact match
-        if genre_lower in GENRE_PROFILES:
-            return GENRE_PROFILES[genre_lower].copy()
-        
-        # Try partial match
-        for key in GENRE_PROFILES:
-            if key in genre_lower or genre_lower in key:
-                return GENRE_PROFILES[key].copy()
-        
-        # Default
-        return DEFAULT_PROFILE.copy()
-    
-    def _add_variation(self, features: Dict[str, float]) -> Dict[str, float]:
-        """Add random variation to features (±10%)"""
-        varied = {}
-        for key, value in features.items():
-            variation = random.uniform(-0.10, 0.10)
-            varied[key] = max(0.0, min(1.0, value + variation))
-        return varied
-    
-    def _estimate_bpm(self, genre: str) -> int:
-        """Estimate BPM based on genre"""
-        genre_lower = genre.lower()
-        
-        bpm_ranges = {
-            'ambient': (60, 90),
-            'hip-hop': (85, 105),
-            'hip hop': (85, 105),
-            'house': (120, 130),
-            'deep house': (118, 125),
-            'techno': (125, 140),
-            'minimal techno': (125, 135),
-            'trance': (130, 145),
-            'drum and bass': (160, 180),
-            'jungle': (160, 175),
-            'dubstep': (135, 145),
-            'breakbeat': (125, 140),
-            'idm': (100, 140),
-            'jazz': (90, 140),
-        }
-        
-        # Find matching range
-        for key, (min_bpm, max_bpm) in bpm_ranges.items():
-            if key in genre_lower:
-                return random.randint(min_bpm, max_bpm)
-        
-        # Default
-        return random.randint(100, 130)
-    
-    def assign_colors_by_genre(self):
-        """Assign colors based on detected genre"""
-        logger.info("Assigning colors by genre...")
-        
-        genre_colors = {
-            'techno': (0.8, 0.2, 0.2),
-            'minimal techno': (0.9, 0.3, 0.3),
-            'house': (0.9, 0.5, 0.2),
-            'deep house': (0.8, 0.6, 0.3),
-            'idm': (0.2, 0.8, 0.9),
-            'ambient': (0.5, 0.7, 0.9),
-            'dubstep': (0.1, 0.6, 0.8),
-            'drum and bass': (0.1, 0.5, 0.7),
-            'jungle': (0.2, 0.6, 0.6),
-            'hip-hop': (0.2, 0.7, 0.3),
-            'hip hop': (0.2, 0.7, 0.3),
-            'jazz': (0.7, 0.3, 0.9),
-            'jazz fusion': (0.8, 0.4, 0.9),
-            'breakbeat': (0.9, 0.5, 0.2),
-            'trance': (0.3, 0.8, 0.5),
-            'experimental': (0.6, 0.6, 0.6),
-        }
-        
-        default_color = (0.6, 0.6, 0.6)
-        
-        for genre, (r, g, b) in genre_colors.items():
-            self.cursor.execute("""
-                UPDATE tracks
-                SET color_r = %s, color_g = %s, color_b = %s
-                WHERE genre ILIKE %s AND color_r IS NULL
-            """, (r, g, b, f'%{genre}%'))
-        
-        # Default for unmatched
-        self.cursor.execute("""
-            UPDATE tracks
-            SET color_r = %s, color_g = %s, color_b = %s
-            WHERE color_r IS NULL
-        """, default_color)
-        
-        self.conn.commit()
-        logger.info("✅ Colors assigned")
-    
-    def close(self):
-        """Close database connection"""
-        self.cursor.close()
-        self.conn.close()
+            enqueue_row_jobs(row, jobs, args.requested_by, args.dry_run, conn)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    logger.info("🎵 REBEL Audio Features Calculator\n")
-    
-    calculator = AudioFeaturesCalculator(DB_CONFIG)
-    
-    try:
-        # Calculate features
-        calculator.calculate_features()
-        
-        # Assign colors
-        calculator.assign_colors_by_genre()
-        
-        # Stats
-        calculator.cursor.execute("""
-            SELECT 
-                genre,
-                COUNT(*) as count,
-                ROUND(AVG(energy)::numeric, 2) as avg_energy,
-                ROUND(AVG(danceability)::numeric, 2) as avg_dance,
-                ROUND(AVG(bpm)::numeric, 0) as avg_bpm
-            FROM tracks
-            WHERE genre IS NOT NULL
-            GROUP BY genre
-            ORDER BY count DESC
-            LIMIT 10
-        """)
-        
-        stats = calculator.cursor.fetchall()
-        
-        logger.info("\n📊 Genre Statistics:")
-        logger.info(f"{'Genre':<20} {'Tracks':<8} {'Energy':<8} {'Dance':<8} {'BPM':<8}")
-        logger.info("="*60)
-        for stat in stats:
-            logger.info(f"{stat['genre']:<20} {stat['count']:<8} {stat['avg_energy']:<8} {stat['avg_dance']:<8} {stat['avg_bpm']:<8}")
-        
-        logger.info("\n✅ Feature calculation complete!")
-        
-    finally:
-        calculator.close()
+    main()

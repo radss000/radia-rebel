@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from psycopg2.extras import RealDictCursor, Json
+from psycopg2.extras import RealDictCursor
 from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -10,12 +10,10 @@ import os
 import tempfile
 import json
 import requests
-from redis import Redis
-from rq import Queue
 from pydantic import BaseModel, HttpUrl, validator
 
 from database.utils import get_db_connection, DB_CONFIG
-from jobs.tasks import JOB_TASK_MAP
+from jobs.queue import enqueue_analysis_job, serialize_job
 from processing.audio_features import extract_audio_features, derive_position
 
 app = FastAPI(title="REBEL Music API", version="1.0.0")
@@ -32,10 +30,6 @@ app.add_middleware(
 PROVIDER_TYPE_CHOICES = {"bandcamp", "discogs", "youtube_music", "spotify", "other"}
 RIGHTS_SCOPE_CHOICES = {"restricted", "analysis_only", "public_preview"}
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-ANALYSIS_QUEUE_NAME = os.getenv("ANALYSIS_QUEUE_NAME", "analysis")
-redis_connection = Redis.from_url(REDIS_URL)
-analysis_queue = Queue(ANALYSIS_QUEUE_NAME, connection=redis_connection)
 
 class TrackIngestRequest(BaseModel):
     mongo_track_id: str
@@ -158,18 +152,6 @@ def derive_provider_track_id(
         return f"mongo-{payload.mongo_track_id}"
     # Use deterministic hash of source URL as last resort
     return hashlib.sha256(fallback_source_url.encode('utf-8')).hexdigest()
-
-
-def serialize_job(row: dict) -> dict:
-    serialized = {}
-    for key, value in row.items():
-        if isinstance(value, datetime):
-            serialized[key] = value.isoformat()
-        elif isinstance(value, UUID):
-            serialized[key] = str(value)
-        else:
-            serialized[key] = value
-    return serialized
 
 
 def _search_youtube_preview(artist: str, title: str) -> Dict[str, Any]:
@@ -772,78 +754,23 @@ def search_and_ingest_track(payload: TrackSearchIngestRequest):
 
 @app.post("/api/jobs/enqueue")
 def enqueue_job(payload: JobEnqueueRequest):
-    task_path = JOB_TASK_MAP.get(payload.job_type)
-    if not task_path:
-        raise HTTPException(status_code=400, detail="Unsupported job_type")
-
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        job_params = {
-            "track_id": payload.track_id,
-            "audio_asset_id": str(payload.audio_asset_id) if payload.audio_asset_id else None,
-            "job_type": payload.job_type,
-            "priority": payload.priority,
-            "provider_type": payload.provider_type,
-            "provider_track_id": payload.provider_track_id,
-            "payload": Json(payload.payload) if payload.payload is not None else None,
-            "requested_by": payload.requested_by,
-        }
-        cursor.execute(
-            """
-            INSERT INTO analysis_jobs (
-                track_id,
-                audio_asset_id,
-                job_type,
-                status,
-                priority,
-                provider_type,
-                provider_track_id,
-                payload,
-                requested_by
-            ) VALUES (
-                %(track_id)s,
-                %(audio_asset_id)s,
-                %(job_type)s,
-                'queued',
-                %(priority)s,
-                %(provider_type)s,
-                %(provider_track_id)s,
-                %(payload)s,
-                %(requested_by)s
-            )
-            RETURNING *
-            """,
-            job_params,
+        job_row, queue_job_id = enqueue_analysis_job(
+            job_type=payload.job_type,
+            track_id=payload.track_id,
+            audio_asset_id=str(payload.audio_asset_id) if payload.audio_asset_id else None,
+            provider_type=payload.provider_type,
+            provider_track_id=payload.provider_track_id,
+            payload=payload.payload,
+            priority=payload.priority,
+            requested_by=payload.requested_by,
         )
-        job_row = cursor.fetchone()
-        conn.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        conn.rollback()
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=500, detail=f"Failed to create job: {exc}") from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    cursor.close()
-    conn.close()
-
-    try:
-        rq_job = analysis_queue.enqueue(task_path, str(job_row["id"]), job_id=str(job_row["id"]))
-    except Exception as exc:
-        conn = get_db_connection()
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE analysis_jobs SET status = 'failed', error_message = %s WHERE id = %s",
-                    (f"Queue enqueue failed: {exc}", job_row["id"]),
-                )
-        conn.close()
-        raise HTTPException(status_code=502, detail=f"Failed to enqueue job: {exc}") from exc
-
-    return {
-        "job": serialize_job(job_row),
-        "queue_job_id": rq_job.id,
-    }
+    return {"job": serialize_job(job_row), "queue_job_id": queue_job_id}
 
 
 @app.get("/api/jobs/{job_id}")

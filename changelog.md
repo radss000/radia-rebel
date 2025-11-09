@@ -1,3 +1,10 @@
+## 2025-11-07 · Unified analysis jobs & backfill CLI
+
+- Removed the legacy genre-based `processing/embeddings_generator.py` + synthetic feature calculator and replaced them with a single backfill CLI (`processing/calculate_audio_features.py`) that inspects audio assets and enqueues the real `preview_fetch → audio_features → embedding → position` jobs.
+- Introduced `jobs.queue` so both the FastAPI endpoints and command-line tools share the same logic for inserting/enqueuing `analysis_jobs`, preventing diverging code paths between realtime ingest and batch backfills.
+- Updated `music-pipeline/api/main.py` and `database/init_db.py` to reference the shared queue helpers, simplifying deployment steps and keeping every backend entry point on the task queue architecture.
+- Documented the new CLI usage in `README.md`, including dry-run support and selective job steps, so no one reruns the synthetic calculators by mistake.
+
 ## 2025-11-06 · Sonic Map auto-ingest workflow
 
 - Added a full search-ingest stack in `music-pipeline/api/main.py`: YouTube lookup via `yt-dlp`, track/audio-asset upsert helper, and the `/api/tracks/search-ingest` endpoint that enqueues the entire `preview_fetch → audio_features → embedding → position` chain and returns every job id for polling.

@@ -27,3 +27,15 @@ See 2-min Loom demo [https://www.loom.com/share/407133f5a33444d08a471b82696b3ed7
 5. Prefer the streamlined endpoint `/api/tracks/search-ingest` (or the React Sonic Map UI) when you only know the artist/title. It uses `yt-dlp` to grab the best YouTube preview, upserts the track/audio asset, automatically enqueues the full job chain, and returns the job IDs so the frontend can poll sequentially.
 
 The Sonic Map admin page (`frontend/src/pages/SonicMapPage.js`) now exposes a “Search & analyze a new track” form that calls `/api/tracks/search-ingest`, streams the progress of each job step, and refreshes the Babylon map as soon as the `position` job finishes.
+
+### Backfilling existing catalogue entries
+
+If you already have tracks with cached previews (or after importing metadata through the crawler), run:
+
+```bash
+cd music-pipeline
+python processing/calculate_audio_features.py --limit 200
+```
+
+The CLI inspects the `tracks` + `audio_assets` tables, determines which jobs are still missing
+(`preview_fetch`, `audio_features`, `embedding`, `position`), and enqueues them through the same Redis/RQ queue so the workers you launched in step 3 can process them. Use `--dry-run` to audit actions without enqueuing, or `--steps audio_features,position` to restrict to specific jobs.

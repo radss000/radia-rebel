@@ -200,8 +200,9 @@ def main():
         print("\n✅ Initialization complete!")
         print("\n📚 Next steps:")
         print("  1. Start crawling: python scrapers/musicbrainz_crawler.py")
-        print("  2. Generate embeddings: python processing/embeddings_generator.py")
-        print("  3. Start API: python api/main.py")
+        print("  2. Backfill analysis jobs: python processing/calculate_audio_features.py --limit 100")
+        print("  3. Start workers: python -m jobs.worker (plus processing/audio_asset_worker.py)")
+        print("  4. Start API: python api/main.py")
         
     except Exception as e:
         print(f"\n❌ Initialization failed: {e}")
