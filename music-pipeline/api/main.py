@@ -1,14 +1,22 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from typing import List, Optional
+from psycopg2.extras import RealDictCursor, Json
+from typing import Any, Dict, List, Optional, Literal
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+from uuid import UUID
+import hashlib
 import os
 import tempfile
+import json
 import requests
-import numpy as np
-import librosa
+from redis import Redis
+from rq import Queue
 from pydantic import BaseModel, HttpUrl, validator
+
+from database.utils import get_db_connection, DB_CONFIG
+from jobs.tasks import JOB_TASK_MAP
+from processing.audio_features import extract_audio_features, derive_position
 
 app = FastAPI(title="REBEL Music API", version="1.0.0")
 
@@ -21,18 +29,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database config
-DB_CONFIG = {
-    'host': os.getenv('POSTGRES_HOST', 'localhost'),
-    'port': int(os.getenv('POSTGRES_PORT', 5432)),
-    'database': os.getenv('POSTGRES_DB', 'rebel_music'),
-    'user': os.getenv('POSTGRES_USER', 'rebel'),
-    'password': os.getenv('POSTGRES_PASSWORD', 'rebel_password')
-}
+PROVIDER_TYPE_CHOICES = {"bandcamp", "discogs", "youtube_music", "spotify", "other"}
+RIGHTS_SCOPE_CHOICES = {"restricted", "analysis_only", "public_preview"}
 
-def get_db_connection():
-    """Create database connection"""
-    return psycopg2.connect(**DB_CONFIG)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+ANALYSIS_QUEUE_NAME = os.getenv("ANALYSIS_QUEUE_NAME", "analysis")
+redis_connection = Redis.from_url(REDIS_URL)
+analysis_queue = Queue(ANALYSIS_QUEUE_NAME, connection=redis_connection)
 
 class TrackIngestRequest(BaseModel):
     mongo_track_id: str
@@ -43,6 +46,14 @@ class TrackIngestRequest(BaseModel):
     tags: Optional[List[str]] = None
     description: Optional[str] = None
     duration_seconds: Optional[int] = None
+    preview_provider_type: Optional[str] = None
+    preview_provider_track_id: Optional[str] = None
+    preview_source_url: Optional[HttpUrl] = None
+    preview_rights_scope: Optional[str] = None
+    preview_license_name: Optional[str] = None
+    preview_license_url: Optional[HttpUrl] = None
+    preview_license_notes: Optional[str] = None
+    preview_expires_at: Optional[datetime] = None
 
     @validator('tags', pre=True)
     def empty_list(cls, value):
@@ -50,64 +61,317 @@ class TrackIngestRequest(BaseModel):
             return []
         return value
 
-def normalise_feature(value: float, min_val: float, max_val: float) -> float:
-    if value is None or np.isnan(value):
-        return 0.5
-    return float(np.clip((value - min_val) / (max_val - min_val + 1e-9), 0.0, 1.0))
+    @validator('preview_provider_type')
+    def normalise_provider_type(cls, value):
+        if value is None:
+            return value
+        lower = value.lower()
+        if lower not in PROVIDER_TYPE_CHOICES:
+            raise ValueError(f"Unsupported provider type '{value}'")
+        return lower
 
-def extract_audio_features(audio_path: str):
+    @validator('preview_rights_scope')
+    def normalise_rights_scope(cls, value):
+        if value is None:
+            return value
+        lower = value.lower()
+        if lower not in RIGHTS_SCOPE_CHOICES:
+            raise ValueError(f"Unsupported rights scope '{value}'")
+        return lower
+
+
+class TrackSearchIngestRequest(BaseModel):
+    artist: str
+    title: str
+    fallback_url: Optional[HttpUrl] = None
+    requested_by: Optional[str] = None
+
+    @validator("artist", "title")
+    def ensure_text(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Artist and title are required")
+        return " ".join(value.strip().split())
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class JobEnqueueRequest(BaseModel):
+    job_type: Literal["preview_fetch", "audio_features", "embedding", "position"]
+    track_id: Optional[int] = None
+    audio_asset_id: Optional[UUID] = None
+    provider_type: Optional[str] = None
+    provider_track_id: Optional[str] = None
+    payload: Optional[dict] = None
+    priority: int = 0
+    requested_by: Optional[str] = None
+
+    @validator('provider_type')
+    def normalise_provider(cls, value):
+        if value is None:
+            return value
+        lower = value.lower()
+        if lower not in PROVIDER_TYPE_CHOICES:
+            raise ValueError(f"Unsupported provider type '{value}'")
+        return lower
+
+    @validator('audio_asset_id', always=True)
+    def ensure_asset(cls, value, values):
+        job_type = values.get('job_type')
+        if job_type in {"preview_fetch", "audio_features"} and value is None:
+            raise ValueError("audio_asset_id is required for preview_fetch and audio_features jobs")
+        return value
+
+    @validator('track_id', always=True)
+    def ensure_track(cls, value, values):
+        job_type = values.get('job_type')
+        if job_type in {"embedding", "position"} and value is None:
+            raise ValueError("track_id is required for embedding and position jobs")
+        return value
+
+
+def infer_provider_type(url_value: Optional[str], explicit: Optional[str]) -> str:
+    if explicit in PROVIDER_TYPE_CHOICES:
+        return explicit
+    if not url_value:
+        return "other"
+    hostname = urlparse(url_value).netloc.lower()
+    if 'bandcamp' in hostname:
+        return 'bandcamp'
+    if 'discogs' in hostname:
+        return 'discogs'
+    if 'spotify' in hostname:
+        return 'spotify'
+    if 'youtube' in hostname or 'ytimg' in hostname:
+        return 'youtube_music'
+    return 'other'
+
+
+def derive_provider_track_id(
+    payload: TrackIngestRequest,
+    fallback_source_url: str
+) -> str:
+    if payload.preview_provider_track_id:
+        return payload.preview_provider_track_id
+    if payload.mongo_track_id:
+        return f"mongo-{payload.mongo_track_id}"
+    # Use deterministic hash of source URL as last resort
+    return hashlib.sha256(fallback_source_url.encode('utf-8')).hexdigest()
+
+
+def serialize_job(row: dict) -> dict:
+    serialized = {}
+    for key, value in row.items():
+        if isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+        elif isinstance(value, UUID):
+            serialized[key] = str(value)
+        else:
+            serialized[key] = value
+    return serialized
+
+
+def _search_youtube_preview(artist: str, title: str) -> Dict[str, Any]:
     try:
-        y, sr = librosa.load(audio_path, sr=22050, mono=True)
-        if not len(y):
-            raise ValueError("Audio buffer empty")
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        rms = librosa.feature.rms(y=y)[0]
-        zcr = librosa.feature.zero_crossing_rate(y)[0]
-        spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-        spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)[0]
-        rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)[0]
-        duration = librosa.get_duration(y=y, sr=sr)
+        import yt_dlp  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise HTTPException(
+            status_code=500,
+            detail="yt-dlp is required to search YouTube previews. Install it in the pipeline environment.",
+        ) from exc
 
-        energy = normalise_feature(np.mean(rms) * 4, 0, 1.5)
-        danceability = normalise_feature(np.mean(zcr) * 5, 0, 2.5)
-        brightness = normalise_feature(np.mean(spectral_centroid), 500, 7000)
-        bass = normalise_feature(1.0 / (np.mean(rolloff) + 1e-9), 0, 0.001)
-        acousticness = normalise_feature(np.mean(spectral_bandwidth), 500, 4000)
-        valence = normalise_feature(np.var(y), 0.01, 0.2)
-
-        return {
-            "tempo": float(np.clip(tempo, 40, 200)),
-            "energy": energy,
-            "danceability": danceability,
-            "brightness": brightness,
-            "bass": bass,
-            "acousticness": acousticness,
-            "valence": valence,
-            "duration_sec": int(duration)
-        }
+    query = f"ytsearch1:{artist} - {title} audio"
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "skip_download": True,
+        "no_warnings": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[attr-defined]
+            info = ydl.extract_info(query, download=False)
     except Exception as exc:
-        raise RuntimeError(f"Audio feature extraction failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"YouTube search failed: {exc}") from exc
 
-def derive_position(features: dict):
-    energy = features.get("energy", 0.5)
-    dance = features.get("danceability", 0.5)
-    brightness = features.get("brightness", 0.5)
-    valence = features.get("valence", 0.5)
+    entry: Optional[Dict[str, Any]] = None
+    if isinstance(info, dict):
+        if info.get("_type") == "video":
+            entry = info
+        else:
+            entries = info.get("entries") or []
+            if entries:
+                entry = entries[0]
 
-    x = (energy - 0.5) * 400
-    y = (brightness - 0.5) * 400
-    z = (dance - 0.5) * 400
+    if not entry:
+        raise HTTPException(status_code=404, detail="No matching YouTube preview found")
 
-    color = (
-        float(np.clip(energy, 0, 1)),
-        float(np.clip(brightness, 0, 1)),
-        float(np.clip(valence, 0, 1))
-    )
+    webpage_url = entry.get("webpage_url") or entry.get("url")
+    if not webpage_url:
+        raise HTTPException(status_code=500, detail="yt-dlp did not return a usable video URL")
 
-    size = 1.5 + energy * 1.5
-    emissive = 0.2 + brightness * 0.8
+    return {
+        "id": entry.get("id"),
+        "title": entry.get("title"),
+        "duration": entry.get("duration"),
+        "webpage_url": webpage_url,
+        "thumbnail": entry.get("thumbnail"),
+        "channel": entry.get("uploader") or entry.get("channel"),
+        "description": entry.get("description"),
+    }
 
-    return (x, y, z), color, size, emissive
+
+def _ensure_track_and_asset(
+    conn,
+    *,
+    artist: str,
+    title: str,
+    provider_type: str,
+    provider_track_id: str,
+    source_url: str,
+    duration_seconds: Optional[int],
+) -> Dict[str, Any]:
+    """Create or update the track/audio_asset rows for the new preview."""
+    youtube_value = source_url if provider_type == "youtube_music" else None
+    normalized_provider = provider_type.lower()
+    now = now_utc()
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        audio_asset_id: Optional[str] = None
+        track_id: Optional[int] = None
+
+        cursor.execute(
+            """
+            SELECT id, track_id
+            FROM audio_assets
+            WHERE provider_type = %s
+              AND provider_track_id = %s
+              AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (normalized_provider, provider_track_id),
+        )
+        asset_row = cursor.fetchone()
+        if asset_row:
+            audio_asset_id = str(asset_row["id"])
+            track_id = asset_row["track_id"]
+
+        if not track_id:
+            cursor.execute(
+                """
+                SELECT id
+                FROM tracks
+                WHERE lower(title) = lower(%s)
+                  AND lower(artist) = lower(%s)
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (title, artist),
+            )
+            track_row = cursor.fetchone()
+            if track_row:
+                track_id = track_row["id"]
+
+        if not track_id:
+            cursor.execute(
+                """
+                INSERT INTO tracks (title, artist, preview_url, youtube_url, is_public)
+                VALUES (%s, %s, %s, %s, TRUE)
+                RETURNING id
+                """,
+                (title, artist, source_url, youtube_value),
+            )
+            track_id = cursor.fetchone()["id"]
+        else:
+            cursor.execute(
+                """
+                UPDATE tracks
+                SET preview_url = %s,
+                    youtube_url = CASE WHEN %s THEN %s ELSE youtube_url END,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (source_url, normalized_provider == "youtube_music", source_url, track_id),
+            )
+
+        asset_params = {
+            "track_id": track_id,
+            "provider_type": normalized_provider,
+            "provider_track_id": provider_track_id,
+            "source_url": source_url,
+            "provider_preview_url": source_url,
+            "duration_seconds": duration_seconds,
+            "last_checked_at": now,
+        }
+        cursor.execute(
+            """
+            INSERT INTO audio_assets (
+                track_id,
+                provider_type,
+                provider_track_id,
+                source_url,
+                provider_preview_url,
+                storage_checksum,
+                duration_seconds,
+                rights_scope,
+                license_name,
+                license_url,
+                license_notes,
+                fetched_at,
+                expires_at,
+                last_checked_at,
+                fetch_status,
+                fetch_attempts
+            ) VALUES (
+                %(track_id)s,
+                %(provider_type)s,
+                %(provider_track_id)s,
+                %(source_url)s,
+                %(provider_preview_url)s,
+                NULL,
+                %(duration_seconds)s,
+                'analysis_only',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                %(last_checked_at)s,
+                'pending',
+                0
+            )
+            ON CONFLICT (provider_type, provider_track_id)
+            DO UPDATE SET
+                track_id = EXCLUDED.track_id,
+                source_url = EXCLUDED.source_url,
+                provider_preview_url = EXCLUDED.provider_preview_url,
+                rights_scope = EXCLUDED.rights_scope,
+                duration_seconds = COALESCE(EXCLUDED.duration_seconds, audio_assets.duration_seconds),
+                last_checked_at = EXCLUDED.last_checked_at,
+                fetch_status = 'pending',
+                fetch_attempts = 0,
+                fetch_error = NULL,
+                storage_path = NULL,
+                storage_checksum = NULL,
+                fetched_at = NULL,
+                expires_at = EXCLUDED.expires_at,
+                license_name = COALESCE(EXCLUDED.license_name, audio_assets.license_name),
+                license_url = COALESCE(EXCLUDED.license_url, audio_assets.license_url),
+                license_notes = COALESCE(EXCLUDED.license_notes, audio_assets.license_notes),
+                provenance_version = audio_assets.provenance_version + 1,
+                deleted_at = NULL
+            RETURNING id;
+            """,
+            asset_params,
+        )
+        asset_row = cursor.fetchone()
+        if asset_row:
+            audio_asset_id = str(asset_row["id"])
+
+    if not track_id or not audio_asset_id:
+        raise HTTPException(status_code=500, detail="Failed to persist track/audio asset")
+
+    return {"track_id": track_id, "audio_asset_id": audio_asset_id}
 
 @app.get("/")
 def root():
@@ -182,23 +446,41 @@ def ingest_track(payload: TrackIngestRequest):
             raise HTTPException(status_code=502, detail=f"Failed to download audio (status {response.status_code})")
 
         temp_file = tempfile.NamedTemporaryFile(suffix=".tmp", delete=False)
+        hasher = hashlib.sha256()
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 temp_file.write(chunk)
+                hasher.update(chunk)
         temp_file.flush()
         temp_path = temp_file.name
+        storage_checksum = hasher.hexdigest()
 
         features = extract_audio_features(temp_path)
 
-        if not payload.duration_seconds:
-            payload.duration_seconds = features.get("duration_sec")
+        derived_duration = payload.duration_seconds or features.get("duration_sec")
+        payload.duration_seconds = derived_duration
 
         position, color, size, emissive = derive_position(features)
+
+        source_url = str(payload.preview_source_url or payload.audio_url)
+        provider_preview_url = str(payload.audio_url)
+        provider_type = infer_provider_type(source_url, payload.preview_provider_type)
+        provider_track_id = derive_provider_track_id(payload, source_url)
+        rights_scope = payload.preview_rights_scope or "analysis_only"
+        last_checked_at = now_utc()
+        expires_at = payload.preview_expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        license_url = str(payload.preview_license_url) if payload.preview_license_url else None
+        license_name = payload.preview_license_name
+        license_notes = payload.preview_license_notes
+        audio_asset_id = None
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        cursor.execute("""
+        try:
+            cursor.execute("""
             INSERT INTO tracks (
                 title,
                 artist,
@@ -249,39 +531,125 @@ def ingest_track(payload: TrackIngestRequest):
                 TRUE
             )
             RETURNING id;
-        """, {
-            "title": payload.title,
-            "artist": payload.artist,
-            "genre": payload.genre,
-            "description": payload.description,
-            "duration": payload.duration_seconds,
-            "preview": str(payload.audio_url),
-            "tags": payload.tags if payload.tags else None,
-            "tempo": features["tempo"],
-            "energy": features["energy"],
-            "danceability": features["danceability"],
-            "acousticness": features["acousticness"],
-            "brightness": features["brightness"],
-            "bass": features["bass"],
-            "valence": features["valence"],
-            "pos_x": position[0],
-            "pos_y": position[1],
-            "pos_z": position[2],
-            "color_r": color[0],
-            "color_g": color[1],
-            "color_b": color[2],
-            "sphere_size": size,
-            "emissive": emissive
-        })
+            """, {
+                "title": payload.title,
+                "artist": payload.artist,
+                "genre": payload.genre,
+                "description": payload.description,
+                "duration": derived_duration,
+                "preview": provider_preview_url,
+                "tags": payload.tags if payload.tags else None,
+                "tempo": features["tempo"],
+                "energy": features["energy"],
+                "danceability": features["danceability"],
+                "acousticness": features["acousticness"],
+                "brightness": features["brightness"],
+                "bass": features["bass"],
+                "valence": features["valence"],
+                "pos_x": position[0],
+                "pos_y": position[1],
+                "pos_z": position[2],
+                "color_r": color[0],
+                "color_g": color[1],
+                "color_b": color[2],
+                "sphere_size": size,
+                "emissive": emissive
+            })
 
-        track_id = cursor.fetchone()["id"]
-        conn.commit()
-        cursor.close()
-        conn.close()
+            track_id = cursor.fetchone()["id"]
+
+            asset_params = {
+                "track_id": track_id,
+                "provider_type": provider_type,
+                "provider_track_id": provider_track_id,
+                "source_url": source_url,
+                "provider_preview_url": provider_preview_url,
+                "storage_checksum": storage_checksum,
+                "duration_seconds": derived_duration,
+                "rights_scope": rights_scope,
+                "license_name": license_name,
+                "license_url": license_url,
+                "license_notes": license_notes,
+                "fetched_at": None,
+                "expires_at": expires_at,
+                "last_checked_at": last_checked_at,
+                "fetch_status": "pending",
+                "fetch_attempts": 0
+            }
+
+            cursor.execute("""
+                INSERT INTO audio_assets (
+                    track_id,
+                    provider_type,
+                    provider_track_id,
+                    source_url,
+                    provider_preview_url,
+                    storage_checksum,
+                    duration_seconds,
+                    rights_scope,
+                    license_name,
+                    license_url,
+                    license_notes,
+                    fetched_at,
+                    expires_at,
+                    last_checked_at,
+                    fetch_status,
+                    fetch_attempts
+                ) VALUES (
+                    %(track_id)s,
+                    %(provider_type)s,
+                    %(provider_track_id)s,
+                    %(source_url)s,
+                    %(provider_preview_url)s,
+                    %(storage_checksum)s,
+                    %(duration_seconds)s,
+                    %(rights_scope)s,
+                    %(license_name)s,
+                    %(license_url)s,
+                    %(license_notes)s,
+                    %(fetched_at)s,
+                    %(expires_at)s,
+                    %(last_checked_at)s,
+                    %(fetch_status)s,
+                    %(fetch_attempts)s
+                )
+                ON CONFLICT (provider_type, provider_track_id)
+                DO UPDATE SET
+                    track_id = EXCLUDED.track_id,
+                    source_url = EXCLUDED.source_url,
+                    provider_preview_url = EXCLUDED.provider_preview_url,
+                    rights_scope = EXCLUDED.rights_scope,
+                    license_name = EXCLUDED.license_name,
+                    license_url = EXCLUDED.license_url,
+                    license_notes = EXCLUDED.license_notes,
+                    fetched_at = NULL,
+                    expires_at = EXCLUDED.expires_at,
+                    last_checked_at = EXCLUDED.last_checked_at,
+                    fetch_status = 'pending',
+                    fetch_attempts = 0,
+                    storage_checksum = EXCLUDED.storage_checksum,
+                    duration_seconds = COALESCE(EXCLUDED.duration_seconds, audio_assets.duration_seconds),
+                    fetch_error = NULL,
+                    provenance_version = audio_assets.provenance_version + 1,
+                    deleted_at = NULL
+                RETURNING id;
+            """, asset_params)
+            asset_row = cursor.fetchone()
+            if asset_row and asset_row.get("id"):
+                audio_asset_id = str(asset_row["id"])
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
 
         return {
             "success": True,
             "track_id": track_id,
+            "audio_asset_id": audio_asset_id,
             "features": features,
             "position": {
                 "x": position[0],
@@ -300,6 +668,195 @@ def ingest_track(payload: TrackIngestRequest):
                 os.unlink(temp_file.name)
             except Exception:
                 pass
+
+
+@app.post("/api/tracks/search-ingest")
+def search_and_ingest_track(payload: TrackSearchIngestRequest):
+    """Search YouTube (or use a manual URL) then enqueue the full analysis pipeline."""
+    artist = payload.artist.strip()
+    title = payload.title.strip()
+    requested_by = payload.requested_by or "search-ingest"
+
+    if payload.fallback_url:
+        source_url = str(payload.fallback_url)
+        provider_type = infer_provider_type(source_url, None)
+        provider_track_id = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+        selected_preview = {
+            "id": provider_track_id,
+            "title": title,
+            "webpage_url": source_url,
+            "channel": artist,
+            "duration": None,
+            "is_manual": True,
+        }
+    else:
+        selected_preview = _search_youtube_preview(artist, title)
+        source_url = selected_preview["webpage_url"]
+        provider_type = "youtube_music"
+        provider_track_id = selected_preview.get("id") or hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+        selected_preview["is_manual"] = False
+
+    duration_seconds = selected_preview.get("duration")
+    if isinstance(duration_seconds, float):
+        duration_seconds = int(duration_seconds)
+    elif isinstance(duration_seconds, str) and duration_seconds.isdigit():
+        duration_seconds = int(duration_seconds)
+    elif duration_seconds is not None and not isinstance(duration_seconds, int):
+        try:
+            duration_seconds = int(duration_seconds)
+        except Exception:
+            duration_seconds = None
+
+    selected_preview["provider_type"] = provider_type
+    selected_preview["search_query"] = f"{artist} - {title}"
+    selected_preview["duration_seconds"] = duration_seconds
+
+    conn = get_db_connection()
+    try:
+        upsert_result = _ensure_track_and_asset(
+            conn,
+            artist=artist,
+            title=title,
+            provider_type=provider_type,
+            provider_track_id=provider_track_id,
+            source_url=source_url,
+            duration_seconds=duration_seconds,
+        )
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        conn.close()
+
+    jobs = []
+    try:
+        context_asset_id = UUID(upsert_result["audio_asset_id"])
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Invalid audio asset id: {exc}") from exc
+
+    for job_type in ("preview_fetch", "audio_features", "embedding", "position"):
+        payload_kwargs = {
+            "job_type": job_type,
+            "requested_by": requested_by,
+        }
+        if job_type in {"preview_fetch", "audio_features"}:
+            payload_kwargs["audio_asset_id"] = context_asset_id
+            payload_kwargs["provider_type"] = provider_type
+            payload_kwargs["provider_track_id"] = provider_track_id
+        if job_type in {"audio_features", "embedding", "position"}:
+            payload_kwargs["track_id"] = upsert_result["track_id"]
+        job_request = JobEnqueueRequest(**payload_kwargs)
+        enqueue_result = enqueue_job(job_request)
+        jobs.append(
+            {
+                "type": job_type,
+                "job": enqueue_result["job"],
+                "queue_job_id": enqueue_result["queue_job_id"],
+            }
+        )
+
+    return {
+        "track_id": upsert_result["track_id"],
+        "audio_asset_id": upsert_result["audio_asset_id"],
+        "provider_type": provider_type,
+        "provider_track_id": provider_track_id,
+        "preview_source_url": source_url,
+        "selected_preview": selected_preview,
+        "jobs": jobs,
+    }
+
+
+@app.post("/api/jobs/enqueue")
+def enqueue_job(payload: JobEnqueueRequest):
+    task_path = JOB_TASK_MAP.get(payload.job_type)
+    if not task_path:
+        raise HTTPException(status_code=400, detail="Unsupported job_type")
+
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        job_params = {
+            "track_id": payload.track_id,
+            "audio_asset_id": str(payload.audio_asset_id) if payload.audio_asset_id else None,
+            "job_type": payload.job_type,
+            "priority": payload.priority,
+            "provider_type": payload.provider_type,
+            "provider_track_id": payload.provider_track_id,
+            "payload": Json(payload.payload) if payload.payload is not None else None,
+            "requested_by": payload.requested_by,
+        }
+        cursor.execute(
+            """
+            INSERT INTO analysis_jobs (
+                track_id,
+                audio_asset_id,
+                job_type,
+                status,
+                priority,
+                provider_type,
+                provider_track_id,
+                payload,
+                requested_by
+            ) VALUES (
+                %(track_id)s,
+                %(audio_asset_id)s,
+                %(job_type)s,
+                'queued',
+                %(priority)s,
+                %(provider_type)s,
+                %(provider_track_id)s,
+                %(payload)s,
+                %(requested_by)s
+            )
+            RETURNING *
+            """,
+            job_params,
+        )
+        job_row = cursor.fetchone()
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Failed to create job: {exc}") from exc
+
+    cursor.close()
+    conn.close()
+
+    try:
+        rq_job = analysis_queue.enqueue(task_path, str(job_row["id"]), job_id=str(job_row["id"]))
+    except Exception as exc:
+        conn = get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE analysis_jobs SET status = 'failed', error_message = %s WHERE id = %s",
+                    (f"Queue enqueue failed: {exc}", job_row["id"]),
+                )
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Failed to enqueue job: {exc}") from exc
+
+    return {
+        "job": serialize_job(job_row),
+        "queue_job_id": rq_job.id,
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job_status(job_id: UUID):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute("SELECT * FROM analysis_jobs WHERE id = %s", (str(job_id),))
+    job = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return serialize_job(job)
 
 @app.get("/api/tracks/sonic-map")
 def get_sonic_map_data(limit: int = 1000):

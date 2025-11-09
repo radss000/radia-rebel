@@ -7,6 +7,36 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
+-- ENUM TYPES & TRIGGER HELPERS
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'provider_type_enum') THEN
+        CREATE TYPE provider_type_enum AS ENUM ('bandcamp', 'discogs', 'youtube_music', 'spotify', 'other');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'rights_scope_enum') THEN
+        CREATE TYPE rights_scope_enum AS ENUM ('restricted', 'analysis_only', 'public_preview');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'fetch_status_enum') THEN
+        CREATE TYPE fetch_status_enum AS ENUM ('pending', 'fetched', 'failed', 'purged');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'job_status_enum') THEN
+        CREATE TYPE job_status_enum AS ENUM ('pending', 'queued', 'running', 'succeeded', 'failed', 'cancelled');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'job_type_enum') THEN
+        CREATE TYPE job_type_enum AS ENUM ('preview_fetch', 'audio_features', 'embedding', 'position', 'analysis');
+    END IF;
+END$$;
+
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS trigger AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
 -- TRACKS TABLE
 -- ============================================================
 CREATE TABLE tracks (
@@ -59,7 +89,7 @@ CREATE TABLE tracks (
     brightness FLOAT CHECK (brightness >= 0 AND brightness <= 1),
     bass FLOAT CHECK (bass >= 0 AND bass <= 1),
     valence FLOAT CHECK (valence >= 0 AND valence <= 1),
-    
+
     -- 3D position for Sonic Map
     position_x FLOAT,
     position_y FLOAT,
@@ -100,6 +130,89 @@ CREATE INDEX idx_tracks_search ON tracks USING gin(
         coalesce(album, '')
     )
 );
+
+-- ============================================================
+-- AUDIO ASSETS TABLE
+-- ============================================================
+CREATE TABLE audio_assets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
+    provider_type provider_type_enum NOT NULL,
+    provider_track_id TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    provider_preview_url TEXT,
+    storage_path TEXT,
+    storage_bucket_region TEXT,
+    storage_checksum TEXT,
+    audio_fingerprint BYTEA,
+    duration_seconds NUMERIC,
+    bitrate_kbps INTEGER,
+    rights_scope rights_scope_enum NOT NULL DEFAULT 'analysis_only',
+    license_name TEXT,
+    license_url TEXT,
+    license_notes TEXT,
+    fetched_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    last_checked_at TIMESTAMPTZ,
+    fetch_status fetch_status_enum NOT NULL DEFAULT 'pending',
+    fetch_attempts INTEGER NOT NULL DEFAULT 0,
+    fetch_error TEXT,
+    ingestion_job_id UUID,
+    provenance_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX idx_audio_assets_provider_track ON audio_assets(provider_type, provider_track_id);
+CREATE INDEX idx_audio_assets_storage_checksum ON audio_assets(storage_checksum) WHERE storage_checksum IS NOT NULL;
+CREATE INDEX idx_audio_assets_fetch_status ON audio_assets(fetch_status);
+
+CREATE TRIGGER set_audio_assets_updated_at
+    BEFORE UPDATE ON audio_assets
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_set_timestamp();
+
+-- ============================================================
+-- ANALYSIS JOBS TABLE
+-- ============================================================
+CREATE TABLE analysis_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
+    audio_asset_id UUID,
+    job_type job_type_enum NOT NULL,
+    status job_status_enum NOT NULL DEFAULT 'pending',
+    priority INTEGER NOT NULL DEFAULT 0,
+    provider_type provider_type_enum,
+    provider_track_id TEXT,
+    requested_by TEXT,
+    payload JSONB,
+    result_metadata JSONB,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_analysis_jobs_status ON analysis_jobs(status, job_type, priority);
+CREATE INDEX idx_analysis_jobs_track ON analysis_jobs(track_id);
+CREATE INDEX idx_analysis_jobs_asset ON analysis_jobs(audio_asset_id);
+
+CREATE TRIGGER set_analysis_jobs_updated_at
+    BEFORE UPDATE ON analysis_jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_set_timestamp();
+
+ALTER TABLE audio_assets
+    ADD CONSTRAINT audio_assets_ingestion_job_fk
+    FOREIGN KEY (ingestion_job_id) REFERENCES analysis_jobs(id) ON DELETE SET NULL;
+
+ALTER TABLE analysis_jobs
+    ADD CONSTRAINT analysis_jobs_asset_fk
+    FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE SET NULL;
 
 -- ============================================================
 -- TRACK LINKS TABLE
