@@ -74,6 +74,63 @@ app.get('/api/tracks/sonic-map', async (req, res) => {
   }
 });
 
+app.post('/api/jobs/enqueue', async (req, res) => {
+  try {
+    const response = await fetchFn(`${pipelineApiUrl.replace(/\/$/, '')}/api/jobs/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+
+    const bodyText = await response.text();
+    let data;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch (err) {
+      data = { detail: bodyText };
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Job enqueue proxy error:', error.message);
+    res.status(502).json({
+      error: 'Failed to enqueue job',
+      message: error.message,
+      hint: `Make sure Python API and Redis are running at ${pipelineApiUrl}`
+    });
+  }
+});
+
+app.get('/api/jobs/:id', async (req, res) => {
+  try {
+    const response = await fetchFn(`${pipelineApiUrl.replace(/\/$/, '')}/api/jobs/${req.params.id}`);
+    const bodyText = await response.text();
+    let data;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch (err) {
+      data = { detail: bodyText };
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Job status proxy error:', error.message);
+    res.status(502).json({
+      error: 'Failed to fetch job status',
+      message: error.message,
+      hint: `Make sure Python API is running on ${pipelineApiUrl}`
+    });
+  }
+});
+
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/sonicMapData.json', express.static(path.join(__dirname, '../public/sonicMapData.json')));
@@ -94,10 +151,10 @@ app.use('/sonic-map', require('helmet')({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.babylonjs.com'],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", "data:", "https://assets.babylonjs.com"],
-      connectSrc: ["'self'", 'https://cdn.babylonjs.com', pipelineOrigin],
-      fontSrc: ["'self'", "https://cdn.babylonjs.com"],
+      connectSrc: ["'self'", 'https://cdn.babylonjs.com', 'https://fonts.gstatic.com', pipelineOrigin],
+      fontSrc: ["'self'", "https://cdn.babylonjs.com", 'https://fonts.gstatic.com'],
       objectSrc: ["'none'"],
       frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://widget.deezer.com"],
       childSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://widget.deezer.com"],
