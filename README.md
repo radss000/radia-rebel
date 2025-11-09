@@ -44,13 +44,14 @@ The CLI inspects the `tracks` + `audio_assets` tables, determines which jobs are
 
 The `embedding` job now generates real vectors from the cached preview using LAION-CLAP:
 
-1. Install PyTorch, torchaudio, and laion-clap (already listed in `music-pipeline/requirements.txt`). On Apple Silicon:
+1. Install PyTorch, torchaudio, torchvision, and laion-clap (already listed in `music-pipeline/requirements.txt`). On Apple Silicon:
    ```bash
    pip install torch==2.2.2 torchaudio==2.2.2 --extra-index-url https://download.pytorch.org/whl/cpu
    pip install laion-clap==1.1.4
    ```
-2. Configure the model via environment variables (see `.env.example`): `CLAP_AMODEL`, `CLAP_ENABLE_FUSION`, `CLAP_CHECKPOINT_PATH` (optional), and `EMBEDDING_SAMPLE_RATE` (default 48kHz).
+2. Configure the model via environment variables (see `.env.example`): `CLAP_AMODEL` (defaults to `HTSAT-Large` to match LAION's public checkpoint), `CLAP_ENABLE_FUSION`, and optionally `CLAP_CHECKPOINT_PATH` if you have a local `.pt` file; if the path is missing, the worker will download the official weights automatically. `EMBEDDING_SAMPLE_RATE` defaults to 48kHz.
 3. Ensure Qdrant is reachable if you want vectors pushed to the `music_embeddings` collection; set `QDRANT_HOST/PORT/API_KEY`.
-4. Start the RQ worker with `python -m jobs.worker`. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
+4. Configure longer RQ timeouts if your first CLAP download takes a while (see `JOB_TIMEOUT_DEFAULT` / `EMBEDDING_JOB_TIMEOUT` in `.env.example`—embedding defaults to 900 s). This prevents slow checkpoints from timing out mid-transfer.
+5. Start the RQ worker with `python -m jobs.worker`. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
 
 If Qdrant or laion-clap aren't installed, the worker logs a warning but the rest of the pipeline continues.

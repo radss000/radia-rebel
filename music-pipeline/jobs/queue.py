@@ -18,6 +18,16 @@ ANALYSIS_QUEUE_NAME = os.getenv("ANALYSIS_QUEUE_NAME", "analysis")
 redis_connection = Redis.from_url(REDIS_URL)
 analysis_queue = Queue(ANALYSIS_QUEUE_NAME, connection=redis_connection)
 
+DEFAULT_JOB_TIMEOUT = int(os.getenv("JOB_TIMEOUT_DEFAULT", "300"))
+EMBEDDING_JOB_TIMEOUT = int(os.getenv("EMBEDDING_JOB_TIMEOUT", "1200"))
+
+JOB_TIMEOUTS = {
+    "preview_fetch": DEFAULT_JOB_TIMEOUT,
+    "audio_features": DEFAULT_JOB_TIMEOUT,
+    "embedding": EMBEDDING_JOB_TIMEOUT,
+    "position": DEFAULT_JOB_TIMEOUT,
+}
+
 
 def serialize_job(row: Dict[str, Any]) -> Dict[str, Any]:
     """Convert DB row values into JSON-serialisable primitives."""
@@ -45,6 +55,7 @@ def enqueue_analysis_job(
     payload: Optional[Dict[str, Any]] = None,
     priority: int = 0,
     requested_by: Optional[str] = None,
+    job_timeout: Optional[int] = None,
 ) -> Tuple[Dict[str, Any], str]:
     """Insert an analysis_job row then push it to the RQ queue."""
     task_path = JOB_TASK_MAP.get(job_type)
@@ -98,8 +109,15 @@ def enqueue_analysis_job(
 
     assert job_row is not None  # for mypy
 
+    timeout_value = job_timeout or JOB_TIMEOUTS.get(job_type, DEFAULT_JOB_TIMEOUT)
+
     try:
-        rq_job = analysis_queue.enqueue(task_path, str(job_row["id"]), job_id=str(job_row["id"]))
+        rq_job = analysis_queue.enqueue(
+            task_path,
+            str(job_row["id"]),
+            job_id=str(job_row["id"]),
+            job_timeout=timeout_value,
+        )
     except Exception as exc:
         conn = get_db_connection()
         with conn:

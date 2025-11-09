@@ -7,6 +7,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -159,7 +160,16 @@ def _get_clap_model():
     logger.info("Loading CLAP model (%s)...", CLAP_AMODEL)
     model = CLAP_Module(enable_fusion=CLAP_ENABLE_FUSION, amodel=CLAP_AMODEL)
     if CLAP_CHECKPOINT_PATH:
-        model.load_ckpt(CLAP_CHECKPOINT_PATH)
+        ckpt_path = Path(CLAP_CHECKPOINT_PATH).expanduser()
+        if ckpt_path.exists():
+            logger.info("Loading CLAP checkpoint from %s", ckpt_path)
+            model.load_ckpt(str(ckpt_path))
+        else:
+            logger.warning(
+                "CLAP checkpoint %s not found; falling back to default download.",
+                ckpt_path,
+            )
+            model.load_ckpt()
     else:
         model.load_ckpt()
     _CLAP_MODEL = model

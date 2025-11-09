@@ -4,6 +4,8 @@
 - Added reusable audio-loading helpers so both feature extraction and embedding generation share the same ffmpeg fallback/mono resampling logic.
 - Ensured both the FastAPI ingest endpoint and the backfill CLI pass `audio_asset_id` into embedding jobs, guaranteeing the worker can locate the stored preview.
 - Documented the new CLAP/Qdrant configuration knobs, added torch/torchaudio/laion-clap to `requirements.txt`, and expanded `.env.example`/README with setup instructions.
+- Added job timeout controls (`JOB_TIMEOUT_DEFAULT`, `EMBEDDING_JOB_TIMEOUT`) so slower CLAP downloads don’t hit the RQ 180 s cap; embedding jobs now default to a 900 s timeout via `jobs/queue.py`.
+- CLAP checkpoint path is now optional: if `CLAP_CHECKPOINT_PATH` is unset or points to a missing file, the worker downloads the official weights automatically. `.env.example` defaults to `HTSAT-Large` to match the published checkpoint.
 
 ## 2025-11-07 · Unified analysis jobs & backfill CLI
 
