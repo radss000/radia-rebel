@@ -6,6 +6,7 @@
 - Documented the new CLAP/Qdrant configuration knobs, added torch/torchaudio/laion-clap to `requirements.txt`, and expanded `.env.example`/README with setup instructions.
 - Added job timeout controls (`JOB_TIMEOUT_DEFAULT`, `EMBEDDING_JOB_TIMEOUT`) so slower CLAP downloads don’t hit the RQ 180 s cap; embedding jobs now default to a 900 s timeout via `jobs/queue.py`.
 - CLAP checkpoint path is now optional: if `CLAP_CHECKPOINT_PATH` is unset or points to a missing file, the worker downloads the official weights automatically. `.env.example` defaults to `HTSAT-Large` to match the published checkpoint.
+- Automatically load `.env` via `python-dotenv` and default `CLAP_AMODEL` to `HTSAT-large`, so workers started from `music-pipeline/` pick up the correct model without manual exports.
 
 ## 2025-11-07 · Unified analysis jobs & backfill CLI
 

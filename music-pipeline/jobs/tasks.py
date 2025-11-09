@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
+from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor, Json
+
+load_dotenv()
 
 from database.utils import get_db_connection
 from processing.audio_features import extract_audio_features, derive_position, load_audio_mono
@@ -26,7 +29,7 @@ JOB_TASK_MAP = {
 
 logger = logging.getLogger(__name__)
 
-CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-base")
+CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-large")
 CLAP_ENABLE_FUSION = os.getenv("CLAP_ENABLE_FUSION", "false").lower() == "true"
 CLAP_CHECKPOINT_PATH = os.getenv("CLAP_CHECKPOINT_PATH")
 CLAP_MODEL_NAME = os.getenv("CLAP_MODEL_NAME", "clap-htsat-base")
