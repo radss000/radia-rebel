@@ -109,7 +109,8 @@ def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry
     for job_type in job_types:
         track_id = row.get("track_id")
         audio_asset_id = row.get("audio_asset_id")
-        if job_type in {"preview_fetch", "audio_features"} and not audio_asset_id:
+        asset_required = job_type in {"preview_fetch", "audio_features", "embedding"}
+        if asset_required and not audio_asset_id:
             logger.warning("Track %s has no audio asset; skipping %s", track_id, job_type)
             continue
 
@@ -117,7 +118,7 @@ def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry
             conn,
             job_type,
             track_id if job_type in {"audio_features", "embedding", "position"} else None,
-            audio_asset_id if job_type in {"preview_fetch", "audio_features"} else None,
+            audio_asset_id if asset_required else None,
         ):
             logger.debug("Track %s already has a pending %s job", track_id, job_type)
             continue
@@ -129,7 +130,7 @@ def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry
         job_row, _ = enqueue_analysis_job(
             job_type=job_type,
             track_id=track_id if job_type in {"audio_features", "embedding", "position"} else None,
-            audio_asset_id=str(audio_asset_id) if audio_asset_id and job_type in {"preview_fetch", "audio_features"} else None,
+            audio_asset_id=str(audio_asset_id) if audio_asset_id and asset_required else None,
             provider_type=row.get("provider_type"),
             provider_track_id=row.get("provider_track_id"),
             requested_by=requested_by,

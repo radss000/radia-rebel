@@ -39,3 +39,18 @@ python processing/calculate_audio_features.py --limit 200
 
 The CLI inspects the `tracks` + `audio_assets` tables, determines which jobs are still missing
 (`preview_fetch`, `audio_features`, `embedding`, `position`), and enqueues them through the same Redis/RQ queue so the workers you launched in step 3 can process them. Use `--dry-run` to audit actions without enqueuing, or `--steps audio_features,position` to restrict to specific jobs.
+
+### Audio embeddings (CLAP)
+
+The `embedding` job now generates real vectors from the cached preview using LAION-CLAP:
+
+1. Install PyTorch, torchaudio, and laion-clap (already listed in `music-pipeline/requirements.txt`). On Apple Silicon:
+   ```bash
+   pip install torch==2.2.2 torchaudio==2.2.2 --extra-index-url https://download.pytorch.org/whl/cpu
+   pip install laion-clap==1.1.4
+   ```
+2. Configure the model via environment variables (see `.env.example`): `CLAP_AMODEL`, `CLAP_ENABLE_FUSION`, `CLAP_CHECKPOINT_PATH` (optional), and `EMBEDDING_SAMPLE_RATE` (default 48kHz).
+3. Ensure Qdrant is reachable if you want vectors pushed to the `music_embeddings` collection; set `QDRANT_HOST/PORT/API_KEY`.
+4. Start the RQ worker with `python -m jobs.worker`. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
+
+If Qdrant or laion-clap aren't installed, the worker logs a warning but the rest of the pipeline continues.

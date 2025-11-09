@@ -1,3 +1,10 @@
+## 2025-11-10 · Real CLAP embeddings in job pipeline
+
+- Swapped the placeholder embedding task for a real LAION-CLAP inference path that loads cached previews at 48kHz, stores metadata in Postgres, and syncs vectors to Qdrant when available.
+- Added reusable audio-loading helpers so both feature extraction and embedding generation share the same ffmpeg fallback/mono resampling logic.
+- Ensured both the FastAPI ingest endpoint and the backfill CLI pass `audio_asset_id` into embedding jobs, guaranteeing the worker can locate the stored preview.
+- Documented the new CLAP/Qdrant configuration knobs, added torch/torchaudio/laion-clap to `requirements.txt`, and expanded `.env.example`/README with setup instructions.
+
 ## 2025-11-07 · Unified analysis jobs & backfill CLI
 
 - Removed the legacy genre-based `processing/embeddings_generator.py` + synthetic feature calculator and replaced them with a single backfill CLI (`processing/calculate_audio_features.py`) that inspects audio assets and enqueues the real `preview_fetch → audio_features → embedding → position` jobs.

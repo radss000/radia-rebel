@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ import numpy as np
 from psycopg2.extras import RealDictCursor, Json
 
 from database.utils import get_db_connection
-from processing.audio_features import extract_audio_features, derive_position
+from processing.audio_features import extract_audio_features, derive_position, load_audio_mono
 from processing.audio_assets.service import StorageClient, process_audio_asset
 
 JOB_TASK_MAP = {
@@ -21,6 +22,23 @@ JOB_TASK_MAP = {
     "embedding": "jobs.tasks.embedding_task",
     "position": "jobs.tasks.position_task",
 }
+
+logger = logging.getLogger(__name__)
+
+CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-base")
+CLAP_ENABLE_FUSION = os.getenv("CLAP_ENABLE_FUSION", "false").lower() == "true"
+CLAP_CHECKPOINT_PATH = os.getenv("CLAP_CHECKPOINT_PATH")
+CLAP_MODEL_NAME = os.getenv("CLAP_MODEL_NAME", "clap-htsat-base")
+CLAP_MODEL_VERSION = os.getenv("CLAP_MODEL_VERSION", "1.0")
+EMBEDDING_SAMPLE_RATE = int(os.getenv("EMBEDDING_SAMPLE_RATE", 48000))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "music_embeddings")
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+
+_CLAP_MODEL = None
+_QDRANT_CLIENT = None
+_QDRANT_DISABLED = False
 
 
 def _mark_job_running(conn, job_id: str) -> Dict[str, Any]:
@@ -112,6 +130,65 @@ def _fetch_track(conn, track_id: int) -> Optional[Dict[str, Any]]:
         return cursor.fetchone()
 
 
+def _fetch_latest_asset_for_track(conn, track_id: int) -> Optional[Dict[str, Any]]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            SELECT *
+            FROM audio_assets
+            WHERE track_id = %s
+              AND deleted_at IS NULL
+              AND fetch_status = 'fetched'
+            ORDER BY fetched_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """,
+            (track_id,),
+        )
+        return cursor.fetchone()
+
+
+def _get_clap_model():
+    global _CLAP_MODEL
+    if _CLAP_MODEL is not None:
+        return _CLAP_MODEL
+    try:
+        from laion_clap import CLAP_Module  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError("laion-clap not installed; pip install laion-clap to enable embeddings") from exc
+
+    logger.info("Loading CLAP model (%s)...", CLAP_AMODEL)
+    model = CLAP_Module(enable_fusion=CLAP_ENABLE_FUSION, amodel=CLAP_AMODEL)
+    if CLAP_CHECKPOINT_PATH:
+        model.load_ckpt(CLAP_CHECKPOINT_PATH)
+    else:
+        model.load_ckpt()
+    _CLAP_MODEL = model
+    logger.info("CLAP model ready")
+    return _CLAP_MODEL
+
+
+def _get_qdrant_client():
+    global _QDRANT_CLIENT, _QDRANT_DISABLED
+    if _QDRANT_DISABLED:
+        return None
+    if _QDRANT_CLIENT is not None:
+        return _QDRANT_CLIENT
+    try:
+        from qdrant_client import QdrantClient  # type: ignore
+        from qdrant_client.http import models as qmodels  # noqa: F401  # ensure dependency available
+    except ImportError:  # pragma: no cover - optional dependency
+        logger.warning("qdrant-client not installed; embeddings will stay local only")
+        _QDRANT_DISABLED = True
+        return None
+    try:
+        _QDRANT_CLIENT = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, api_key=QDRANT_API_KEY)
+    except Exception as exc:  # pragma: no cover - optional path
+        logger.warning("Could not connect to Qdrant (%s); skipping vector sync", exc)
+        _QDRANT_DISABLED = True
+        return None
+    return _QDRANT_CLIENT
+
+
 def preview_fetch_task(job_id: str) -> None:
     conn = get_db_connection()
     storage = StorageClient()
@@ -194,59 +271,82 @@ def audio_features_task(job_id: str) -> None:
 
 
 def embedding_task(job_id: str) -> None:
-    """Generate a placeholder embedding vector based on track features."""
     conn = get_db_connection()
     try:
         job = _mark_job_running(conn, job_id)
         track_id = job.get("track_id")
         if not track_id:
             raise ValueError("Embedding job requires a track_id")
-        track = _fetch_track(conn, track_id)
-        if not track:
-            raise ValueError(f"Track {track_id} not found")
+        asset = None
+        asset_id = job.get("audio_asset_id")
+        if asset_id:
+            asset = _fetch_asset(conn, asset_id)
+        if not asset:
+            asset = _fetch_latest_asset_for_track(conn, track_id)
+        if not asset:
+            raise ValueError(f"No cached audio asset available for track {track_id}")
+        storage_path = asset.get("storage_path")
+        if not storage_path or not os.path.exists(storage_path):
+            raise FileNotFoundError(f"Stored preview not found for asset {asset.get('id')}")
 
-        feature_vector = np.array(
-            [
-                track.get("energy") or 0.5,
-                track.get("danceability") or 0.5,
-                track.get("acousticness") or 0.5,
-                track.get("bass") or 0.5,
-                track.get("brightness") or 0.5,
-                track.get("valence") or 0.5,
-                (track.get("bpm") or 120) / 200.0,
-            ],
-            dtype=float,
-        )
-        base_vector = np.tile(feature_vector, int(np.ceil(128 / feature_vector.size)))[:128]
-        norm = np.linalg.norm(base_vector)
-        if norm > 0:
-            base_vector = base_vector / norm
+        audio, _ = load_audio_mono(storage_path, sample_rate=EMBEDDING_SAMPLE_RATE)
+        if audio is None or not len(audio):
+            raise ValueError("Audio buffer empty for embedding generation")
+
+        clap_model = _get_clap_model()
+        embedding = clap_model.get_audio_embedding_from_data(x=audio, use_tensor=False)[0]
+        embedding = np.asarray(embedding, dtype=np.float32)
+
         embedding_id = str(uuid.uuid4())
+        qdrant_id = embedding_id
+        vector_dimensions = int(embedding.size)
+
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO embeddings (id, track_id, model_name, model_version, vector_dimensions)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO embeddings (id, track_id, model_name, model_version, vector_dimensions, qdrant_point_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (track_id) DO UPDATE
                     SET id = EXCLUDED.id,
                         model_name = EXCLUDED.model_name,
                         model_version = EXCLUDED.model_version,
-                        vector_dimensions = EXCLUDED.vector_dimensions
+                        vector_dimensions = EXCLUDED.vector_dimensions,
+                        qdrant_point_id = EXCLUDED.qdrant_point_id
                 """,
-                (embedding_id, track_id, "placeholder-feature-vector", "0.1", base_vector.size),
+                (embedding_id, track_id, CLAP_MODEL_NAME, CLAP_MODEL_VERSION, vector_dimensions, qdrant_id),
             )
             cursor.execute(
                 "UPDATE tracks SET embedding_id = %s WHERE id = %s",
                 (embedding_id, track_id),
             )
         conn.commit()
+
+        client = _get_qdrant_client()
+        if client:
+            try:
+                from qdrant_client.http import models as qmodels  # type: ignore
+
+                client.upsert(
+                    collection_name=QDRANT_COLLECTION,
+                    points=[
+                        qmodels.PointStruct(
+                            id=qdrant_id,
+                            vector=embedding.tolist(),
+                            payload={"track_id": track_id},
+                        )
+                    ],
+                )
+            except Exception as exc:  # pragma: no cover - optional path
+                logger.warning("Failed to sync embedding %s to Qdrant: %s", embedding_id, exc)
+
         _mark_job_succeeded(
             conn,
             job_id,
             {
                 "embedding_id": embedding_id,
-                "vector_dimensions": int(base_vector.size),
-                "note": "placeholder embedding generated from track features",
+                "vector_dimensions": vector_dimensions,
+                "model": CLAP_MODEL_NAME,
+                "qdrant_point_id": qdrant_id,
             },
         )
     except Exception as exc:  # pragma: no cover

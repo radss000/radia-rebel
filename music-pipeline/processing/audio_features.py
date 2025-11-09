@@ -17,7 +17,7 @@ def normalise_feature(value: float, min_val: float, max_val: float) -> float:
     return float(np.clip((value - min_val) / (max_val - min_val + 1e-9), 0.0, 1.0))
 
 
-def _convert_to_wav(source_path: str) -> str:
+def _convert_to_wav(source_path: str, sample_rate: int) -> str:
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
         raise RuntimeError("ffmpeg binary not found on PATH; install ffmpeg to decode .m4a previews.")
@@ -34,7 +34,7 @@ def _convert_to_wav(source_path: str) -> str:
                 "-ac",
                 "1",
                 "-ar",
-                "22050",
+                str(sample_rate),
                 tmp_file.name,
             ],
             stdout=subprocess.DEVNULL,
@@ -48,13 +48,13 @@ def _convert_to_wav(source_path: str) -> str:
     return tmp_file.name
 
 
-def _load_audio_with_fallback(audio_path: str):
+def _load_audio_with_fallback(audio_path: str, sample_rate: int):
     try:
-        return librosa.load(audio_path, sr=22050, mono=True)
+        return librosa.load(audio_path, sr=sample_rate, mono=True)
     except Exception:
-        converted_path = _convert_to_wav(audio_path)
+        converted_path = _convert_to_wav(audio_path, sample_rate)
         try:
-            return librosa.load(converted_path, sr=22050, mono=True)
+            return librosa.load(converted_path, sr=sample_rate, mono=True)
         except Exception as exc:
             raise RuntimeError(f"Audio decode failed even after ffmpeg conversion: {exc}") from exc
         finally:
@@ -64,7 +64,7 @@ def _load_audio_with_fallback(audio_path: str):
 
 def extract_audio_features(audio_path: str):
     try:
-        y, sr = _load_audio_with_fallback(audio_path)
+        y, sr = _load_audio_with_fallback(audio_path, sample_rate=22050)
         if not len(y):
             raise ValueError("Audio buffer empty")
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -118,4 +118,9 @@ def derive_position(features: dict):
     return (x, y, z), color, size, emissive
 
 
-__all__ = ["extract_audio_features", "derive_position", "normalise_feature"]
+def load_audio_mono(audio_path: str, sample_rate: int = 22050):
+    """Load mono audio at the requested sample rate with ffmpeg fallback."""
+    return _load_audio_with_fallback(audio_path, sample_rate=sample_rate)
+
+
+__all__ = ["extract_audio_features", "derive_position", "normalise_feature", "load_audio_mono"]

@@ -725,7 +725,7 @@ def search_and_ingest_track(payload: TrackSearchIngestRequest):
             "job_type": job_type,
             "requested_by": requested_by,
         }
-        if job_type in {"preview_fetch", "audio_features"}:
+        if job_type in {"preview_fetch", "audio_features", "embedding"}:
             payload_kwargs["audio_asset_id"] = context_asset_id
             payload_kwargs["provider_type"] = provider_type
             payload_kwargs["provider_track_id"] = provider_track_id
