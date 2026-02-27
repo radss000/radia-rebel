@@ -1,20 +1,32 @@
-"""YouTube preview adapter backed by the cobalt API."""
+"""YouTube preview adapter backed by yt-dlp."""
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import Optional
 
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
+
 from .base import PreviewAdapter, PreviewAdapterError, PreviewFetchResult
-from .cobalt_client import CobaltAPIError, request_preview_url
 from .youtube_utils import extract_video_id
 
 logger = logging.getLogger(__name__)
 
+YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "bestaudio/best")
+YTDLP_AUDIO_FORMAT = os.getenv("YTDLP_AUDIO_FORMAT", "mp3")
+YTDLP_COOKIES_PATH = os.getenv("YTDLP_COOKIES_PATH")
+YTDLP_PROXY = os.getenv("YTDLP_PROXY")
+YTDLP_USER_AGENT = os.getenv("YTDLP_USER_AGENT")
+YTDLP_IMPERSONATE = os.getenv("YTDLP_IMPERSONATE")
+YTDLP_PLAYER_CLIENTS = os.getenv("YTDLP_PLAYER_CLIENTS", "android")
 
 class YouTubePreviewAdapter(PreviewAdapter):
-    """Resolve YouTube previews via the cobalt API."""
+    """Resolve YouTube previews via yt-dlp."""
 
     def resolve(
         self,
@@ -28,20 +40,65 @@ class YouTubePreviewAdapter(PreviewAdapter):
         if not video_id:
             raise PreviewAdapterError("Unable to extract video id from provided YouTube URL")
 
-        try:
-            cobalt_result = request_preview_url(target_url)
-        except CobaltAPIError as exc:
-            raise PreviewAdapterError(str(exc)) from exc
+        download_dir = Path(tempfile.mkdtemp(prefix="yt-dlp-"))
+        output_template = str(download_dir / "%(id)s.%(ext)s")
+        ydl_opts = {
+            "format": YTDLP_FORMAT,
+            "outtmpl": output_template,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "overwrites": True,
+            "restrictfilenames": True,
+        }
+        if YTDLP_AUDIO_FORMAT:
+            ydl_opts["postprocessors"] = [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": YTDLP_AUDIO_FORMAT,
+                }
+            ]
+        if YTDLP_COOKIES_PATH:
+            ydl_opts["cookiefile"] = YTDLP_COOKIES_PATH
+        if YTDLP_PROXY:
+            ydl_opts["proxy"] = YTDLP_PROXY
+        if YTDLP_USER_AGENT:
+            ydl_opts["user_agent"] = YTDLP_USER_AGENT
+        if YTDLP_IMPERSONATE:
+            ydl_opts["impersonate"] = YTDLP_IMPERSONATE
+        if YTDLP_PLAYER_CLIENTS:
+            clients = [client.strip() for client in YTDLP_PLAYER_CLIENTS.split(",") if client.strip()]
+            if clients:
+                ydl_opts["extractor_args"] = {"youtube": {"player_client": clients}}
 
-        track_id = provider_track_id or video_id or hashlib.sha256(target_url.encode("utf-8")).hexdigest()
-        file_extension = cobalt_result.get("file_extension") or ".mp3"
-        download_url = cobalt_result.get("download_url")
-        if not download_url:
-            raise PreviewAdapterError("Cobalt response missing download URL")
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(target_url, download=True)
+        except DownloadError as exc:
+            raise PreviewAdapterError(f"yt-dlp download failed: {exc}") from exc
+        except Exception as exc:
+            raise PreviewAdapterError(f"yt-dlp error: {exc}") from exc
+
+        candidate_files = [
+            path
+            for path in download_dir.iterdir()
+            if path.is_file()
+            and not path.name.endswith(".part")
+            and not path.name.endswith(".ytdl")
+            and not path.name.endswith(".info.json")
+        ]
+        if not candidate_files:
+            raise PreviewAdapterError("yt-dlp did not produce a preview file")
+
+        best_file = max(candidate_files, key=lambda path: path.stat().st_size)
+        track_id = provider_track_id or info.get("id") or video_id or hashlib.sha256(target_url.encode("utf-8")).hexdigest()
+        fallback_extension = f".{YTDLP_AUDIO_FORMAT}" if YTDLP_AUDIO_FORMAT else ".mp3"
+        file_extension = best_file.suffix or fallback_extension
 
         return PreviewFetchResult(
-            download_url=download_url,
+            download_url=None,
             headers={},
             provider_track_id=track_id,
             file_extension=file_extension,
+            local_file_path=str(best_file),
         )

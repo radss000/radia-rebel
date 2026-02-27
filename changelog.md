@@ -1,3 +1,9 @@
+## 2025-11-21 · YouTube previews back on yt-dlp
+
+- Replaced the cobalt-backed YouTube preview adapter with a yt-dlp download path that returns local audio files to the preview worker.
+- Updated docs/env examples with yt-dlp tuning options while retaining `COBALT_PREVIEW_DURATION_SECONDS` for preview trimming.
+- Documented optional yt-dlp tuning (cookies/proxy/user-agent/impersonation) for more reliable YouTube downloads.
+
 ## 2025-11-20 · Cobalt-backed YouTube previews
 
 - Replaced the OAuth-based YouTube adapter with a cobalt API resolver that streams tunnel URLs straight into `processing.audio_assets.service` while keeping the storage client untouched.

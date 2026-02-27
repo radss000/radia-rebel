@@ -9,7 +9,7 @@ Adapters currently implemented:
     - ``bandcamp``: scrape track pages to extract the preview MP3 URL, falling
       back to the stored ``provider_preview_url`` when available.
 
-Additional adapters (e.g. Bandcamp, YouTube via cobalt) can be
+Additional adapters (e.g. Bandcamp, YouTube via yt-dlp) can be
 registered via ``register_adapter``.
 """
 

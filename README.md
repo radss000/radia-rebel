@@ -57,10 +57,9 @@ If Qdrant or laion-clap aren't installed, the worker logs a warning but the rest
 
 ### YouTube preview fetching
 
-The preview worker now calls a cobalt API instance (either the hosted `api.cobalt.tools` endpoint or your own deployment) instead of juggling OAuth tokens or yt-dlp shims.
+The preview worker now uses `yt-dlp` to download YouTube audio previews directly, then hands those bytes to the storage backend.
 
-1. Point `COBALT_API_URL` at the cobalt instance you control (defaults to the local Docker package at `http://127.0.0.1:9000/`). If the instance enforces API keys, populate `COBALT_API_KEY` and keep `COBALT_API_AUTH_SCHEME=Api-Key`; leave the key blank to hit an open node.
-2. Adjust `COBALT_DOWNLOAD_MODE`, `COBALT_AUDIO_FORMAT`, `COBALT_AUDIO_BITRATE`, and `COBALT_PREVIEW_DURATION_SECONDS` to control the preview flavor. Setting duration to `0` (default) stores the full cobalt download. If you set a positive value (clamped to 30–60 s) the worker trims with ffmpeg before passing bytes to `processing.audio_assets.service.StorageClient`, so all previews land as uniform snippets no matter which storage backend (`local`, `s3`, or `gcs`) you use.
-3. The FastAPI `/api/tracks/search-ingest` endpoint now performs a lightweight scrape of YouTube's public search page (no OAuth required) to find the first playable result when no manual URL is provided. Set `YOUTUBE_SEARCH_USER_AGENT`, `YOUTUBE_SEARCH_ACCEPT_LANGUAGE`, and `YOUTUBE_SEARCH_TIMEOUT` if you need to tune that scraper for your region.
-
-With cobalt in the loop there are no refresh tokens, cookies, or PO tokens to manage. As long as the cobalt instance stays healthy, the worker simply resolves the tunnel and the existing pipeline (preview fetch → features → embeddings → position) keeps running unchanged.
+1. Install `yt-dlp` (pinned in `music-pipeline/requirements.txt`) and ensure ffmpeg is available if you want consistent audio formats or preview trimming.
+2. Adjust `YTDLP_FORMAT` and `YTDLP_AUDIO_FORMAT` to control the download flavor. If you set `COBALT_PREVIEW_DURATION_SECONDS` (>0, clamped 30–60 s) the worker trims with ffmpeg before passing bytes to `processing.audio_assets.service.StorageClient`, so previews land as uniform snippets regardless of storage backend (`local`, `s3`, or `gcs`).
+3. If extraction fails, try pinning YouTube player clients with `YTDLP_PLAYER_CLIENTS` (defaults to `android`). For authenticated or region-specific downloads, set `YTDLP_COOKIES_PATH`, `YTDLP_PROXY`, `YTDLP_USER_AGENT`, or `YTDLP_IMPERSONATE`.
+4. The FastAPI `/api/tracks/search-ingest` endpoint still performs a lightweight scrape of YouTube's public search page (no OAuth required) to find the first playable result when no manual URL is provided. Set `YOUTUBE_SEARCH_USER_AGENT`, `YOUTUBE_SEARCH_ACCEPT_LANGUAGE`, and `YOUTUBE_SEARCH_TIMEOUT` if you need to tune that scraper for your region.
