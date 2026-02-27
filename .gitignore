@@ -21,6 +21,13 @@ frontend/build/
 !/public/uploads/profiles/.gitkeep
 !/public/uploads/tracks/.gitkeep
 
+# Secrets and local credentials
+secrets/
+music-pipeline/secrets/
+
+# Local media downloads
+*.mp4
+
 # Logs
 logs
 *.log

@@ -1,3 +1,32 @@
+## 2025-11-20 · Cobalt-backed YouTube previews
+
+- Replaced the OAuth-based YouTube adapter with a cobalt API resolver that streams tunnel URLs straight into `processing.audio_assets.service` while keeping the storage client untouched.
+- Removed every Google OAuth dependency: deleted `processing/google/*` + `processing/youtube/*`, dropped the `google_oauth_tokens` table from both schema files, and trimmed `google-auth*` from `requirements.txt`.
+- Added cobalt/search configuration knobs (`COBALT_*`, `YOUTUBE_SEARCH_*`) to `.env` + `.env.example`, rewrote the README setup section, and documented the new scraping-based `/api/tracks/search-ingest` behaviour.
+- Defaulted cobalt traffic to the local docker instance (`http://127.0.0.1:9000/`) with API key support baked into `.env`, preventing accidental calls to the hosted `api.cobalt.tools`.
+- Audio preview worker now clamps every cobalt download to `COBALT_PREVIEW_DURATION_SECONDS` (30‑60 s, ffmpeg-backed) before calling `StorageClient`, keeping preview lengths uniform regardless of provider.
+- Implemented a lightweight YouTube search scraper inside `api/main.py` so track ingest works without the Data API, and updated the changelog/docs to reflect the cobalt flow replacing the yt-dlp/PO-token stack entirely.
+
+## 2025-11-16 · Google OAuth previews & GCS storage
+
+- Swapped the yt-dlp/PO-token flow for a native Google OAuth integration: new table `google_oauth_tokens`, CLI (`python -m processing.youtube.oauth_cli login`) to seed refresh tokens, and a YouTube preview adapter that hits the official youtubei player endpoint with OAuth access tokens.
+- Removed the entire yt-dlp dependency stack (`processing.youtube.token_*`, cookie jars, PO token refresher) and updated FastAPI search to use the YouTube Data API instead of yt-dlp scrapes.
+- Extended `StorageClient` with a GCS backend so preview bytes are uploaded to `gs://…` via `google-cloud-storage` when `AUDIO_STORAGE_MODE=gcs` is set.
+- Cleaned up `.env.example`, README, and docs to reflect the new OAuth/GCS flow and dropped all references to cookies or yt-dlp tuning.
+
+## 2025-11-13 · YouTube preview segmenter
+
+- Added a `yt-dlp`-backed download path inside `processing.providers.youtube.YouTubePreviewAdapter` that trims previews to a configurable 30‑60 s window, stores them as local temp files, and bypasses the brittle PO-token-only workflow for public videos.
+- Extended `PreviewFetchResult`/`processing.audio_assets.service` so adapters can return local files instead of remote URLs; the worker now hashes + stores those bytes directly and cleans up the temp media afterwards.
+- Introduced env knobs (`YOUTUBE_PREVIEW_MODE`, duration/start seconds, temp dir, optional cookies/proxy) in `.env.example` so ops can tune segment length or re-enable the legacy streaming fallback if needed.
+
+## 2025-11-12 · YouTube preview reliability
+
+- Added `processing.youtube.token_store` and refactored the YouTube adapter so workers read the latest Android PO token from a shared JSON cache or env override, enabling zero-downtime token swaps.
+- Introduced `processing.youtube.token_refresher` (CLI/daemon) that uses Rebel’s authenticated cookies + yt-dlp to mint fresh PO tokens on a schedule, persisting them with timestamps/expiry metadata and locked-down file permissions.
+- Extended `.env.example`, README, and a new ops doc (`docs/youtube-preview-reliability.md`) with the full automation blueprint: cookie vault, refresher deployment, worker integration, scaling guidance, and monitoring hooks.
+- Audio preview downloads now emit structured `preview_download_failed` log entries (with provider, host, HTTP status) so expiring YouTube credentials trigger alerts before the queue backs up.
+
 ## 2025-11-10 · Real CLAP embeddings in job pipeline
 
 - Swapped the placeholder embedding task for a real LAION-CLAP inference path that loads cached previews at 48kHz, stores metadata in Postgres, and syncs vectors to Qdrant when available.

@@ -8,13 +8,20 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
+from types import MethodType
 
 import numpy as np
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor, Json
+import tempfile
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_PATH = PROJECT_ROOT / ".env"
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=ENV_PATH, override=False)
+else:
+    load_dotenv(override=False)
 
 from database.utils import get_db_connection
 from processing.audio_features import extract_audio_features, derive_position, load_audio_mono
@@ -29,7 +36,7 @@ JOB_TASK_MAP = {
 
 logger = logging.getLogger(__name__)
 
-CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-large")
+CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-tiny")
 CLAP_ENABLE_FUSION = os.getenv("CLAP_ENABLE_FUSION", "false").lower() == "true"
 CLAP_CHECKPOINT_PATH = os.getenv("CLAP_CHECKPOINT_PATH")
 CLAP_MODEL_NAME = os.getenv("CLAP_MODEL_NAME", "clap-htsat-base")
@@ -39,6 +46,10 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "music_embeddings")
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH")
+
+CANNED_CLAP_AMODEL = "HTSAT-tiny"
+AUTO_DOWNLOAD_CLAP_AMODELS = {CANNED_CLAP_AMODEL}
 
 _CLAP_MODEL = None
 _QDRANT_CLIENT = None
@@ -151,6 +162,38 @@ def _fetch_latest_asset_for_track(conn, track_id: int) -> Optional[Dict[str, Any
         return cursor.fetchone()
 
 
+def _resolve_clap_amodel() -> str:
+    """Ensure we only request architectures we actually have weights for."""
+    if CLAP_CHECKPOINT_PATH:
+        return CLAP_AMODEL
+    if CLAP_AMODEL not in AUTO_DOWNLOAD_CLAP_AMODELS:
+        fallback = CANNED_CLAP_AMODEL
+        logger.warning(
+            "CLAP_AMODEL=%s requires CLAP_CHECKPOINT_PATH; falling back to %s bundled weights",
+            CLAP_AMODEL,
+            fallback,
+        )
+        return fallback
+    return CLAP_AMODEL
+
+
+def _patch_clap_state_dict_loader(model) -> None:
+    """Strip incompatible keys before laion-clap loads checkpoints."""
+    if getattr(model, "_patched_state_dict_loader", False):
+        return
+
+    original_loader = model.model.load_state_dict
+
+    def _safe_load_state_dict(self, state_dict, strict=True):
+        if "text_branch.embeddings.position_ids" in state_dict:
+            state_dict = dict(state_dict)
+            state_dict.pop("text_branch.embeddings.position_ids", None)
+        return original_loader(state_dict, strict=strict)
+
+    model.model.load_state_dict = MethodType(_safe_load_state_dict, model.model)
+    setattr(model, "_patched_state_dict_loader", True)
+
+
 def _get_clap_model():
     global _CLAP_MODEL
     if _CLAP_MODEL is not None:
@@ -160,8 +203,10 @@ def _get_clap_model():
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise RuntimeError("laion-clap not installed; pip install laion-clap to enable embeddings") from exc
 
-    logger.info("Loading CLAP model (%s)...", CLAP_AMODEL)
-    model = CLAP_Module(enable_fusion=CLAP_ENABLE_FUSION, amodel=CLAP_AMODEL)
+    amodel = _resolve_clap_amodel()
+    logger.info("Loading CLAP model (%s)...", amodel)
+    model = CLAP_Module(enable_fusion=CLAP_ENABLE_FUSION, amodel=amodel)
+    _patch_clap_state_dict_loader(model)
     if CLAP_CHECKPOINT_PATH:
         ckpt_path = Path(CLAP_CHECKPOINT_PATH).expanduser()
         if ckpt_path.exists():
@@ -230,9 +275,16 @@ def audio_features_task(job_id: str) -> None:
         if not asset:
             raise ValueError(f"Audio asset {asset_id} not found")
         storage_path = asset.get("storage_path")
-        if not storage_path or not os.path.exists(storage_path):
+        if not storage_path:
             raise FileNotFoundError(f"Stored preview not found for asset {asset_id}")
-        features = extract_audio_features(storage_path)
+        local_path, cleanup = _materialize_storage_path(storage_path)
+        try:
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Stored preview not found for asset {asset_id}")
+            features = extract_audio_features(local_path)
+        finally:
+            if cleanup:
+                cleanup()
         track_id = job.get("track_id") or asset.get("track_id")
         if not track_id:
             raise ValueError("No track associated with job")
@@ -299,15 +351,25 @@ def embedding_task(job_id: str) -> None:
         if not asset:
             raise ValueError(f"No cached audio asset available for track {track_id}")
         storage_path = asset.get("storage_path")
-        if not storage_path or not os.path.exists(storage_path):
+        if not storage_path:
             raise FileNotFoundError(f"Stored preview not found for asset {asset.get('id')}")
 
-        audio, _ = load_audio_mono(storage_path, sample_rate=EMBEDDING_SAMPLE_RATE)
+        local_path, cleanup = _materialize_storage_path(storage_path)
+        try:
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Stored preview not found for asset {asset.get('id')}")
+            audio, _ = load_audio_mono(local_path, sample_rate=EMBEDDING_SAMPLE_RATE)
+            if audio is None or not len(audio):
+                raise ValueError("Audio buffer empty for embedding generation")
+        finally:
+            if cleanup:
+                cleanup()
         if audio is None or not len(audio):
             raise ValueError("Audio buffer empty for embedding generation")
+        audio_batch = [audio]
 
         clap_model = _get_clap_model()
-        embedding = clap_model.get_audio_embedding_from_data(x=audio, use_tensor=False)[0]
+        embedding = clap_model.get_audio_embedding_from_data(x=audio_batch, use_tensor=False)[0]
         embedding = np.asarray(embedding, dtype=np.float32)
 
         embedding_id = str(uuid.uuid4())
@@ -433,3 +495,58 @@ def position_task(job_id: str) -> None:
         raise
     finally:
         conn.close()
+def _resolve_secret_path(raw_path: Optional[str]) -> Optional[Path]:
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path
+
+
+def _materialize_storage_path(storage_path: str) -> tuple[str, Optional[Callable[[], None]]]:
+    """Ensure remote storage paths (GCS/S3) are available locally."""
+    if storage_path.startswith("gs://"):
+        resolved = _resolve_secret_path(GCP_CREDENTIALS_PATH)
+        if not resolved or not resolved.exists():
+            raise RuntimeError("Set GCP_CREDENTIALS_PATH to download previews from GCS storage")
+        try:
+            from google.cloud import storage as gcs_storage  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError("google-cloud-storage is required to read GCS previews") from exc
+        bucket_name, blob_name = storage_path[5:].split("/", 1)
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(blob_name).suffix or ".tmp")
+        tmp_file.close()
+        client = gcs_storage.Client.from_service_account_json(str(resolved))
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.download_to_filename(tmp_file.name)
+
+        def _cleanup() -> None:
+            try:
+                os.unlink(tmp_file.name)
+            except FileNotFoundError:
+                pass
+
+        return tmp_file.name, _cleanup
+
+    if storage_path.startswith("s3://"):
+        try:
+            import boto3  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError("boto3 is required to read S3 previews") from exc
+        bucket_name, key = storage_path[5:].split("/", 1)
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(key).suffix or ".tmp")
+        tmp_file.close()
+        s3_client = boto3.client("s3")
+        s3_client.download_file(bucket_name, key, tmp_file.name)
+
+        def _cleanup() -> None:
+            try:
+                os.unlink(tmp_file.name)
+            except FileNotFoundError:
+                pass
+
+        return tmp_file.name, _cleanup
+
+    return storage_path, None

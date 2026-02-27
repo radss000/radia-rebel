@@ -9,12 +9,14 @@ import hashlib
 import os
 import tempfile
 import json
+import re
 import requests
 from pydantic import BaseModel, HttpUrl, validator
 
 from database.utils import get_db_connection, DB_CONFIG
 from jobs.queue import enqueue_analysis_job, serialize_job
 from processing.audio_features import extract_audio_features, derive_position
+from processing.providers.youtube_utils import extract_video_id
 
 app = FastAPI(title="REBEL Music API", version="1.0.0")
 
@@ -29,6 +31,13 @@ app.add_middleware(
 
 PROVIDER_TYPE_CHOICES = {"bandcamp", "discogs", "youtube_music", "spotify", "other"}
 RIGHTS_SCOPE_CHOICES = {"restricted", "analysis_only", "public_preview"}
+YOUTUBE_SEARCH_URL = os.getenv("YOUTUBE_SEARCH_URL", "https://www.youtube.com/results")
+YOUTUBE_SEARCH_TIMEOUT = int(os.getenv("YOUTUBE_SEARCH_TIMEOUT", "15"))
+YOUTUBE_SEARCH_USER_AGENT = os.getenv(
+    "YOUTUBE_SEARCH_USER_AGENT",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+)
+YOUTUBE_SEARCH_ACCEPT_LANGUAGE = os.getenv("YOUTUBE_SEARCH_ACCEPT_LANGUAGE", "en-US,en;q=0.9")
 
 
 class TrackIngestRequest(BaseModel):
@@ -150,56 +159,104 @@ def derive_provider_track_id(
         return payload.preview_provider_track_id
     if payload.mongo_track_id:
         return f"mongo-{payload.mongo_track_id}"
+    video_id = extract_video_id(fallback_source_url)
+    if video_id:
+        return video_id
     # Use deterministic hash of source URL as last resort
     return hashlib.sha256(fallback_source_url.encode('utf-8')).hexdigest()
 
 
-def _search_youtube_preview(artist: str, title: str) -> Dict[str, Any]:
-    try:
-        import yt_dlp  # type: ignore
-    except ImportError as exc:  # pragma: no cover - optional dependency
-        raise HTTPException(
-            status_code=500,
-            detail="yt-dlp is required to search YouTube previews. Install it in the pipeline environment.",
-        ) from exc
+def _extract_runs_text(node: Optional[dict]) -> Optional[str]:
+    if not isinstance(node, dict):
+        return None
+    runs = node.get("runs") or []
+    for run in runs:
+        text = run.get("text")
+        if text:
+            return text
+    simple = node.get("simpleText")
+    return simple
 
-    query = f"ytsearch1:{artist} - {title} audio"
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "skip_download": True,
-        "no_warnings": True,
+
+def _parse_duration_text(raw: Optional[str]) -> Optional[int]:
+    if not raw:
+        return None
+    parts = raw.split(":")
+    try:
+        values = [int(part) for part in parts]
+    except ValueError:
+        return None
+    seconds = 0
+    for value in values:
+        seconds = seconds * 60 + value
+    return seconds
+
+
+def _find_first_video_renderer(initial_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    contents = (
+        initial_data.get("contents", {})
+        .get("twoColumnSearchResultsRenderer", {})
+        .get("primaryContents", {})
+        .get("sectionListRenderer", {})
+        .get("contents", [])
+    )
+    for section in contents:
+        item_section = section.get("itemSectionRenderer")
+        if not item_section:
+            continue
+        for item in item_section.get("contents", []):
+            video = item.get("videoRenderer")
+            if video and video.get("videoId"):
+                return video
+    return None
+
+
+def _search_youtube_preview(artist: str, title: str) -> Dict[str, Any]:
+    query = f"{artist} - {title} audio"
+    headers = {
+        "User-Agent": YOUTUBE_SEARCH_USER_AGENT,
+        "Accept-Language": YOUTUBE_SEARCH_ACCEPT_LANGUAGE,
+        "Accept": "text/html,application/xhtml+xml",
     }
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[attr-defined]
-            info = ydl.extract_info(query, download=False)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"YouTube search failed: {exc}") from exc
+        response = requests.get(
+            YOUTUBE_SEARCH_URL,
+            params={"search_query": query},
+            headers=headers,
+            timeout=YOUTUBE_SEARCH_TIMEOUT,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"YouTube search request failed: {exc}") from exc
 
-    entry: Optional[Dict[str, Any]] = None
-    if isinstance(info, dict):
-        if info.get("_type") == "video":
-            entry = info
-        else:
-            entries = info.get("entries") or []
-            if entries:
-                entry = entries[0]
+    match = re.search(r"var ytInitialData = (.*?);</script>", response.text, flags=re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=502, detail="Unable to parse YouTube search results")
+    try:
+        initial_data = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Invalid YouTube search payload") from exc
 
-    if not entry:
+    video = _find_first_video_renderer(initial_data)
+    if not video:
         raise HTTPException(status_code=404, detail="No matching YouTube preview found")
 
-    webpage_url = entry.get("webpage_url") or entry.get("url")
-    if not webpage_url:
-        raise HTTPException(status_code=500, detail="yt-dlp did not return a usable video URL")
-
+    video_id = video.get("videoId")
+    if not video_id:
+        raise HTTPException(status_code=404, detail="No matching YouTube preview found")
+    title_text = _extract_runs_text(video.get("title")) or title
+    channel_text = _extract_runs_text(video.get("ownerText")) or _extract_runs_text(video.get("shortBylineText"))
+    duration_text = video.get("lengthText", {}).get("simpleText")
+    duration_seconds = _parse_duration_text(duration_text)
+    webpage_url = f"https://www.youtube.com/watch?v={video_id}"
     return {
-        "id": entry.get("id"),
-        "title": entry.get("title"),
-        "duration": entry.get("duration"),
+        "id": video_id,
+        "title": title_text,
+        "duration": duration_seconds,
         "webpage_url": webpage_url,
-        "thumbnail": entry.get("thumbnail"),
-        "channel": entry.get("uploader") or entry.get("channel"),
-        "description": entry.get("description"),
+        "thumbnail": None,
+        "channel": channel_text,
+        "description": None,
     }
 
 

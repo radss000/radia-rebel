@@ -10,13 +10,15 @@ from typing import Dict, Optional, Protocol
 class PreviewFetchResult:
     """Resolved information required to download an audio preview."""
 
-    download_url: str
+    download_url: Optional[str]
     headers: Dict[str, str]
     provider_track_id: str
     file_extension: str = ".mp3"
     license_name: Optional[str] = None
     license_url: Optional[str] = None
     license_notes: Optional[str] = None
+    local_file_path: Optional[str] = None
+    cleanup_local_file: bool = True
 
 
 class PreviewAdapterError(RuntimeError):

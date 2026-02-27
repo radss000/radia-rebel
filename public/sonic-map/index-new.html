@@ -45,6 +45,16 @@
     </div>
   </div>
 
+  <!-- ENTRY PANEL -->
+  <div class="entry-panel">
+    <div class="entry-panel-label">Entry Mode</div>
+    <div class="entry-buttons">
+      <button class="entry-btn active" data-mode="roam">Roam</button>
+      <button class="entry-btn" data-mode="locate">Locate</button>
+      <button class="entry-btn" data-mode="add">Add</button>
+    </div>
+  </div>
+
   <!-- TRACK INFO CARD (Bottom Left) -->
   <div class="track-info-card hidden" id="trackInfoCard">
     <div class="track-info-header">
@@ -141,6 +151,12 @@
 
   <!-- NOTIFICATION CONTAINER -->
   <div id="notificationContainer"></div>
+  <div class="bond-card hidden" id="bondCard">
+    <p class="bond-label">Cluster Bond</p>
+    <h4 class="bond-title" id="bondTitle">—</h4>
+    <p class="bond-meta" id="bondMeta">—</p>
+    <div class="bond-neighbors" id="bondNeighbors"></div>
+  </div>
 
   <audio id="audioPlayer" preload="auto" style="display:none;"></audio>
 
@@ -160,6 +176,8 @@
     let currentPlayingSphere = null;
     let activeSphere = null;
     let glowLayer = null;
+    let connectionLines = [];
+    let currentEntryMode = 'roam';
     let speedLevel = config.defaultSpeed;
     let universeScale = config.universeScale;
     let targetScale = config.targetScale;
@@ -178,6 +196,10 @@
     const shareBtn = document.getElementById('shareBtn');
     const previewEmbed = document.getElementById('previewEmbed');
     const trackLinksContainer = document.getElementById('trackLinks');
+    const bondCard = document.getElementById('bondCard');
+    const bondTitle = document.getElementById('bondTitle');
+    const bondMeta = document.getElementById('bondMeta');
+    const bondNeighbors = document.getElementById('bondNeighbors');
 
     const playIcon = `
       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -474,6 +496,7 @@
         activeSphere.outlineColor = activeSphere.metadata.baseColor.scale(1.15);
         activeSphere.outlineWidth = activeSphere.metadata.baseOutlineWidth;
         activeSphere.material.emissiveColor = activeSphere.metadata.baseEmissive;
+        emphasizeConnections(activeSphere, false);
         activeSphere = null;
       }
       currentPlayingSphere = null;
@@ -532,6 +555,8 @@
       
       await loadTracks();
       setupControls();
+      setupEntryPanel();
+      setupPointerTracking();
       
       setTimeout(() => {
         document.getElementById('loadingScreen').style.opacity = '0';
@@ -603,7 +628,11 @@
             ...track,
             baseColor: color,
             baseEmissive,
-            baseOutlineWidth: sphere.outlineWidth
+            baseOutlineWidth: sphere.outlineWidth,
+            baseScale: sphere.scaling.x,
+            pulsePhase: Math.random() * Math.PI * 2,
+            connections: [],
+            neighbors: []
           };
           spheres.push(sphere);
           
@@ -619,6 +648,18 @@
               () => handleSphereClick(sphere)
             )
           );
+          sphere.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+              BABYLON.ActionManager.OnPointerOverTrigger,
+              () => handleSphereHover(sphere)
+            )
+          );
+          sphere.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+              BABYLON.ActionManager.OnPointerOutTrigger,
+              () => handleSphereOut(sphere)
+            )
+          );
         });
         
         if (closestSphere) {
@@ -630,6 +671,7 @@
           ));
         }
         
+        buildConnections();
         showNotification(`${data.length} tracks ready`, '✨');
         
       } catch (error) {
@@ -643,6 +685,7 @@
         activeSphere.outlineColor = activeSphere.metadata.baseColor.scale(1.15);
         activeSphere.outlineWidth = activeSphere.metadata.baseOutlineWidth;
         activeSphere.material.emissiveColor = activeSphere.metadata.baseEmissive;
+        emphasizeConnections(activeSphere, false);
       }
 
       activeSphere = sphere;
@@ -651,6 +694,7 @@
       sphere.outlineColor = new BABYLON.Color3(0.95, 0.97, 1);
       sphere.outlineWidth = sphere.metadata.baseOutlineWidth * 1.8;
       sphere.material.emissiveColor = sphere.metadata.baseColor.scale(1.4);
+      emphasizeConnections(sphere, true);
 
       updateTrackInfo(sphere.metadata);
       showNotification(`Playing: ${sphere.metadata.title}`, '▶️');
@@ -716,6 +760,143 @@
           const dir = camera.getDirection(BABYLON.Axis.Z).scale(forward * speed);
           const lat = camera.getDirection(BABYLON.Axis.X).scale(right * speed);
           camera.position.addInPlace(dir).addInPlace(lat);
+        }
+
+        const time = performance.now() / 1000;
+        spheres.forEach(sphere => {
+          if (!sphere.metadata || !sphere.metadata.baseScale) return;
+          const bpm = sphere.metadata.bpm || sphere.metadata.audio?.bpm || 120;
+          const energy = sphere.metadata.audio?.energy ?? sphere.metadata.energy ?? 0.5;
+          const pulseSpeed = Math.max(0.35, bpm / 200);
+          const amplitude = 0.03 + energy * 0.07;
+          const wave = Math.sin(time * pulseSpeed * Math.PI + sphere.metadata.pulsePhase) * amplitude;
+          const scale = sphere.metadata.baseScale * (1 + wave);
+          sphere.scaling.set(scale, scale, scale);
+        });
+      });
+    }
+
+    function buildConnections(maxNeighbors = 3, maxDistance = 220) {
+      const created = new Set();
+      spheres.forEach(sphere => {
+        const distances = spheres
+          .filter(other => other !== sphere)
+          .map(other => ({
+            other,
+            dist: BABYLON.Vector3.Distance(sphere.originalPosition, other.originalPosition)
+          }))
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, maxNeighbors)
+          .filter(entry => entry.dist <= maxDistance);
+
+        sphere.metadata.neighbors = distances.map(entry => entry.other.metadata);
+
+        distances.forEach(({ other }) => {
+          const key = [sphere.metadata.id, other.metadata.id].sort().join('_');
+          if (created.has(key)) return;
+          created.add(key);
+          const path = [sphere.position, other.position];
+          const tube = BABYLON.MeshBuilder.CreateTube(`bond_${key}`, {
+            path,
+            radius: 0.25,
+            tessellation: 10
+          }, scene);
+          const baseColor = new BABYLON.Color3(0.5, 0.64, 0.92);
+          const mat = new BABYLON.StandardMaterial(`bondMat_${key}`, scene);
+          mat.diffuseColor = baseColor.scale(0.12);
+          mat.emissiveColor = baseColor.scale(0.24);
+          mat.alpha = 0.4;
+          mat.specularColor = baseColor.scale(0.1);
+          tube.material = mat;
+          tube.isPickable = false;
+          tube.metadata = {
+            baseEmissive: mat.emissiveColor,
+            baseAlpha: mat.alpha
+          };
+          connectionLines.push(tube);
+          sphere.metadata.connections.push(tube);
+          other.metadata.connections.push(tube);
+        });
+      });
+    }
+
+    function emphasizeConnections(sphere, active) {
+      (sphere.metadata?.connections || []).forEach(line => {
+        if (!line.material || !line.metadata) return;
+        if (active) {
+          line.material.emissiveColor = new BABYLON.Color3(0.9, 0.98, 1);
+          line.material.alpha = 0.7;
+        } else {
+          line.material.emissiveColor = line.metadata.baseEmissive;
+          line.material.alpha = line.metadata.baseAlpha;
+        }
+      });
+    }
+
+    function handleSphereHover(sphere) {
+      if (currentEntryMode === 'add') return;
+      emphasizeConnections(sphere, true);
+      showBondCard(sphere.metadata);
+    }
+
+    function handleSphereOut(sphere) {
+      if (sphere !== activeSphere) {
+        emphasizeConnections(sphere, false);
+      }
+      hideBondCard();
+    }
+
+    function showBondCard(track) {
+      bondTitle.textContent = track.title || 'Untitled';
+      bondMeta.textContent = `${(track.artist || 'Unknown').toUpperCase()} • ${(track.genre || 'Unmapped').toUpperCase()}`;
+      bondNeighbors.innerHTML = '';
+      const neighbors = track.neighbors || [];
+      if (!neighbors.length) {
+        const pill = document.createElement('span');
+        pill.className = 'bond-pill';
+        pill.textContent = 'Solo orbit';
+        bondNeighbors.appendChild(pill);
+      } else {
+        neighbors.slice(0, 3).forEach(nb => {
+          const pill = document.createElement('span');
+          pill.className = 'bond-pill';
+          pill.textContent = nb.title || 'Unknown';
+          bondNeighbors.appendChild(pill);
+        });
+      }
+      bondCard.classList.remove('hidden');
+    }
+
+    function hideBondCard() {
+      bondCard.classList.add('hidden');
+    }
+
+    function setupEntryPanel() {
+      const buttons = document.querySelectorAll('.entry-btn');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.mode;
+          if (mode === currentEntryMode) return;
+          currentEntryMode = mode;
+          buttons.forEach(b => b.classList.toggle('active', b === btn));
+          if (mode === 'roam') {
+            showNotification('Roam mode: follow instinct', '🛰️');
+          } else if (mode === 'locate') {
+            showNotification('Locate mode: choose a known anchor track', '🔍');
+          } else if (mode === 'add') {
+            showNotification('Add mode: soon you will be able to summon new tracks here', '➕');
+          }
+        });
+      });
+    }
+
+    function setupPointerTracking() {
+      scene.onPointerObservable.add(pointerInfo => {
+        if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERMOVE && pointerInfo.event) {
+          if (bondCard.classList.contains('hidden')) return;
+          const { clientX, clientY } = pointerInfo.event;
+          bondCard.style.left = `${clientX + 16}px`;
+          bondCard.style.top = `${clientY + 16}px`;
         }
       });
     }
