@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SONIC MAP · REBEL</title>
+  
+  <!-- Link to Co-Star Styles -->
+  <link rel="stylesheet" href="sonic-map-costar-styles.css">
+  
+  <!-- Babylon.js CDN -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+</head>
+<body>
+  
+  <!-- LOADING SCREEN -->
+  <div class="loading-screen" id="loadingScreen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading Sonic Universe...</div>
+  </div>
+
+  <!-- MAIN CANVAS -->
+  <canvas id="renderCanvas"></canvas>
+
+  <!-- GENRE FILTER (Top Center) -->
+  <div class="genre-filter">
+    <button class="genre-btn active" data-genre="all">ALL</button>
+    <button class="genre-btn" data-genre="techno">TECHNO</button>
+    <button class="genre-btn" data-genre="idm">IDM</button>
+    <button class="genre-btn" data-genre="ambient">AMBIENT</button>
+    <button class="genre-btn" data-genre="house">HOUSE</button>
+    <button class="genre-btn" data-genre="experimental">EXPERIMENTAL</button>
+  </div>
+
+  <!-- HUD (Top Right) -->
+  <div class="hud-container">
+    <div class="hud-card">
+      <div class="hud-label">Speed</div>
+      <div class="hud-value" id="speedDisplay">2</div>
+    </div>
+    <div class="hud-card">
+      <div class="hud-label">Tracks</div>
+      <div class="hud-value" id="trackCount">0</div>
+    </div>
+  </div>
+
+  <!-- ENTRY PANEL -->
+  <div class="entry-panel">
+    <div class="entry-panel-label">Entry Mode</div>
+    <div class="entry-buttons">
+      <button class="entry-btn active" data-mode="roam">Roam</button>
+      <button class="entry-btn" data-mode="locate">Locate</button>
+      <button class="entry-btn" data-mode="add">Add</button>
+    </div>
+  </div>
+
+  <!-- TRACK INFO CARD (Bottom Left) -->
+  <div class="track-info-card hidden" id="trackInfoCard">
+    <div class="track-info-header">
+      <span class="track-status">NOW PLAYING</span>
+      <button class="close-btn" id="closeTrackInfo">×</button>
+    </div>
+    
+    <div class="track-info-body">
+      <h3 class="track-title" id="trackTitle">Select a track</h3>
+      <p class="track-artist" id="trackArtist">Click on a sphere</p>
+      
+      <div class="track-meta">
+        <span id="trackYear">-</span>
+        <span>·</span>
+        <span id="trackGenre">-</span>
+      </div>
+      
+      <div class="track-progress">
+        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+      </div>
+      
+      <div class="track-audio-features">
+        <div class="feature">
+          <span class="feature-label">ENERGY</span>
+          <div class="feature-bar">
+            <div class="feature-fill" id="energyBar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-label">DANCEABILITY</span>
+          <div class="feature-bar">
+            <div class="feature-fill" id="danceBar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-label">BRIGHTNESS</span>
+          <div class="feature-bar">
+            <div class="feature-fill" id="brightnessBar" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="track-preview-embed" id="previewEmbed"></div>
+      <div class="track-links" id="trackLinks"></div>
+    </div>
+    
+    <div class="track-info-actions">
+      <button class="action-btn" id="likeBtn" title="Like">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+      </button>
+      <button class="action-btn primary" id="playPauseBtn" title="Play/Pause">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+      <button class="action-btn" id="shareBtn" title="Share">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+          <polyline points="16 6 12 2 8 6"></polyline>
+          <line x1="12" y1="2" x2="12" y2="15"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- CONTROLS CARD (Bottom Right) -->
+  <div class="controls-card">
+    <h3>Controls</h3>
+    <div class="control-item">
+      <span class="control-label">Move</span>
+      <span class="control-key">WASD</span>
+    </div>
+    <div class="control-item">
+      <span class="control-label">Look</span>
+      <span class="control-key">MOUSE</span>
+    </div>
+    <div class="control-item">
+      <span class="control-label">Scale</span>
+      <span class="control-key">± / ⌘±</span>
+    </div>
+    <div class="control-item">
+      <span class="control-label">Speed</span>
+      <span class="control-key">1-5</span>
+    </div>
+  </div>
+
+  <!-- CROSSHAIR -->
+  <div id="crosshair">
+    <span class="v"></span>
+    <span class="h"></span>
+  </div>
+
+  <!-- NOTIFICATION CONTAINER -->
+  <div id="notificationContainer"></div>
+  <div class="bond-card hidden" id="bondCard">
+    <p class="bond-label">Cluster Bond</p>
+    <h4 class="bond-title" id="bondTitle">—</h4>
+    <p class="bond-meta" id="bondMeta">—</p>
+    <div class="bond-neighbors" id="bondNeighbors"></div>
+  </div>
+
+  <audio id="audioPlayer" preload="auto" style="display:none;"></audio>
+
+  <script>
+    // CONFIGURATION
+    const config = {
+      speedValues: [1, 2, 4, 8, 16],
+      defaultSpeed: 1,
+      universeScale: 1,
+      targetScale: 1,
+      scaleIncrement: 0.02
+    };
+
+    // GLOBAL STATE
+    let scene, camera, engine;
+    let spheres = [], allTracks = [];
+    let currentPlayingSphere = null;
+    let activeSphere = null;
+    let glowLayer = null;
+    let connectionLines = [];
+    let currentEntryMode = 'roam';
+    let speedLevel = config.defaultSpeed;
+    let universeScale = config.universeScale;
+    let targetScale = config.targetScale;
+    let scaleKeyDir = 0, keyMap = {};
+    let currentTrackId = null;
+    let playbackMode = 'none'; // audio, youtube, deezer, external, none
+    let streamingPlaying = false;
+    let streamingSource = null;
+    let currentTrackLinks = {};
+
+    const audioPlayer = document.getElementById('audioPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const progressBar = document.getElementById('progressBar');
+    const closeTrackInfoBtn = document.getElementById('closeTrackInfo');
+    const likeBtn = document.getElementById('likeBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const previewEmbed = document.getElementById('previewEmbed');
+    const trackLinksContainer = document.getElementById('trackLinks');
+    const bondCard = document.getElementById('bondCard');
+    const bondTitle = document.getElementById('bondTitle');
+    const bondMeta = document.getElementById('bondMeta');
+    const bondNeighbors = document.getElementById('bondNeighbors');
+
+    const playIcon = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      </svg>
+    `;
+
+    const pauseIcon = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="4" width="4" height="16"></rect>
+        <rect x="14" y="4" width="4" height="16"></rect>
+      </svg>
+    `;
+
+    audioPlayer.crossOrigin = 'anonymous';
+    audioPlayer.preload = 'auto';
+    playPauseBtn.innerHTML = playIcon;
+
+    audioPlayer.addEventListener('timeupdate', () => {
+      if (!audioPlayer.duration || Number.isNaN(audioPlayer.duration)) return;
+      const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+      progressBar.style.width = `${Math.min(Math.max(progress, 0), 100)}%`;
+    });
+
+    audioPlayer.addEventListener('ended', () => {
+      progressBar.style.width = '0%';
+      setPlayButtonState(false);
+    });
+
+    audioPlayer.addEventListener('play', () => {
+      playbackMode = 'audio';
+      setPlayButtonState(true);
+    });
+    audioPlayer.addEventListener('pause', () => {
+      if (audioPlayer.ended) return;
+      setPlayButtonState(false);
+    });
+
+    playPauseBtn.addEventListener('click', async () => {
+      if (!currentPlayingSphere) {
+        showNotification('Select a track first', '🎧');
+        return;
+      }
+
+      const track = currentPlayingSphere.metadata;
+      const links = track.links || {};
+
+      try {
+        if (playbackMode === 'audio') {
+          if (audioPlayer.paused) {
+            await audioPlayer.play();
+          } else {
+            audioPlayer.pause();
+          }
+          return;
+        }
+
+      if (playbackMode === 'external') {
+        if (streamingSource) {
+          openExternalLink('Preview', streamingSource);
+        } else {
+          showNotification('Preview opens externally', '↗️');
+          }
+          return;
+        }
+
+        await startTrackPlayback(track);
+      } catch (error) {
+        console.error('Playback control error:', error);
+        showNotification('Unable to play preview', '⚠️');
+      }
+    });
+
+    closeTrackInfoBtn.addEventListener('click', hideTrackInfo);
+
+    likeBtn.addEventListener('click', () => {
+      likeBtn.classList.toggle('liked');
+      showNotification(likeBtn.classList.contains('liked') ? 'Track liked' : 'Like removed', likeBtn.classList.contains('liked') ? '❤️' : '🤍');
+    });
+
+    shareBtn.addEventListener('click', () => {
+      const targetLink =
+        currentTrackLinks.bandcamp ||
+        currentTrackLinks.youtube ||
+        currentTrackLinks.deezer ||
+        currentTrackLinks.discogs ||
+        (currentPlayingSphere?.metadata?.preview_url || null);
+
+      if (!targetLink) {
+        showNotification('No external link available', '⚠️');
+        return;
+      }
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(targetLink).then(() => {
+          showNotification('Link copied to clipboard', '🔗');
+        }).catch(() => {
+          openExternalLink('Preview', targetLink);
+        });
+      } else {
+        openExternalLink('Preview', targetLink);
+      }
+    });
+
+    function setPlayButtonState(playing) {
+      playPauseBtn.innerHTML = playing ? pauseIcon : playIcon;
+      playPauseBtn.classList.toggle('active', playing);
+    }
+
+    function isDirectAudio(url) {
+      if (!url) return false;
+      const audioExt = /\.(mp3|wav|ogg|flac|aac)$/i;
+      return audioExt.test(url) || url.startsWith(window.location.origin);
+    }
+
+    function extractYouTubeId(url) {
+      if (!url) return null;
+      const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/,
+        /youtu\.be\/([A-Za-z0-9_-]{11})/
+      ];
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) return match[1];
+      }
+      return null;
+    }
+
+    function stopStreamingEmbed() {
+      previewEmbed.innerHTML = '';
+      previewEmbed.classList.remove('active');
+    }
+
+    function showPreviewHint(message) {
+      previewEmbed.innerHTML = `<div class="preview-placeholder">${message}</div>`;
+      previewEmbed.classList.add('active');
+    }
+
+    function openExternalLink(label, url) {
+      window.open(url, '_blank', 'noopener');
+      showNotification(`Opening ${label}`, '↗️');
+    }
+
+    function renderTrackLinks(track) {
+      currentTrackLinks = track.links || {};
+      trackLinksContainer.innerHTML = '';
+      const linkEntries = [
+        { key: 'bandcamp', label: 'Bandcamp', icon: '🎶' },
+        { key: 'youtube', label: 'YouTube', icon: '▶️' },
+        { key: 'deezer', label: 'Deezer', icon: '♪' },
+        { key: 'discogs', label: 'Discogs', icon: '📀' }
+      ];
+
+      let hasLinks = false;
+      linkEntries.forEach(entry => {
+        const url = currentTrackLinks[entry.key];
+        if (!url) return;
+        hasLinks = true;
+        const btn = document.createElement('button');
+        btn.className = 'track-link-btn';
+        btn.innerHTML = `<span>${entry.icon}</span><span>${entry.label}</span>`;
+        btn.title = `${entry.label} link`;
+        btn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openExternalLink(entry.label, url);
+        });
+        trackLinksContainer.appendChild(btn);
+      });
+
+      if (!hasLinks) {
+        const span = document.createElement('span');
+        span.className = 'track-link-empty';
+        span.textContent = 'No external links';
+        trackLinksContainer.appendChild(span);
+      }
+    }
+
+    async function startTrackPlayback(track) {
+      stopPlayback();
+
+      const links = track.links || {};
+      const hasDirectAudio = isDirectAudio(track.preview_url);
+
+      if (hasDirectAudio) {
+        try {
+          audioPlayer.src = track.preview_url;
+          currentTrackId = track.id;
+          playbackMode = 'audio';
+          streamingSource = null;
+          streamingPlaying = false;
+          await audioPlayer.play();
+        } catch (error) {
+          console.error('Error starting playback:', error);
+          showNotification('Unable to play preview', '⚠️');
+          setPlayButtonState(false);
+        }
+        return;
+      }
+
+      const externalUrl =
+        links.youtube ||
+        links.deezer ||
+        links.bandcamp ||
+        links.discogs ||
+        null;
+
+      if (externalUrl) {
+        playbackMode = 'external';
+        streamingSource = externalUrl;
+        openExternalLink('Preview', streamingSource);
+        showPreviewHint('External preview opened in a new tab.');
+        return;
+      }
+
+      showNotification('No preview available for this track', '⚠️');
+      showPreviewHint('No preview available for this track.');
+    }
+
+    function stopPlayback() {
+      if (playbackMode === 'audio') {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+      }
+
+      playbackMode = 'none';
+      streamingPlaying = false;
+      streamingSource = null;
+      currentTrackId = null;
+
+      progressBar.style.width = '0%';
+      setPlayButtonState(false);
+      stopStreamingEmbed();
+    }
+
+    // UTILITY FUNCTIONS
+    function showNotification(message, icon = '🎵') {
+      const container = document.getElementById('notificationContainer');
+      const notif = document.createElement('div');
+      notif.className = 'notification';
+      notif.innerHTML = `
+        <div class="notification-content">
+          <span class="notification-icon">${icon}</span>
+          <p>${message}</p>
+        </div>
+      `;
+      container.appendChild(notif);
+      setTimeout(() => {
+        notif.classList.add('slideOut');
+        setTimeout(() => notif.remove(), 300);
+      }, 2500);
+    }
+
+    function updateTrackInfo(track) {
+      previewEmbed.innerHTML = '';
+      previewEmbed.classList.remove('active');
+      progressBar.style.width = '0%';
+
+      document.getElementById('trackTitle').textContent = track.title;
+      document.getElementById('trackArtist').textContent = track.artist;
+      document.getElementById('trackYear').textContent = track.year || '-';
+      document.getElementById('trackGenre').textContent = (track.genre || 'UNKNOWN').toUpperCase();
+      
+      const energy = track.audio?.energy || 0.5;
+      const danceability = track.audio?.danceability || 0.5;
+      const brightness = track.audio?.brightness || 0.5;
+      
+      document.getElementById('energyBar').style.width = `${energy * 100}%`;
+      document.getElementById('danceBar').style.width = `${danceability * 100}%`;
+      document.getElementById('brightnessBar').style.width = `${brightness * 100}%`;
+      document.getElementById('trackInfoCard').classList.remove('hidden');
+
+      renderTrackLinks(track);
+
+      const links = track.links || {};
+      const hasDirectAudio = isDirectAudio(track.preview_url);
+      const hasStreamingPreview = Boolean(links.youtube || links.deezer || links.bandcamp);
+      if (hasDirectAudio || hasStreamingPreview) {
+        playPauseBtn.classList.remove('disabled');
+        if (hasDirectAudio) {
+          showPreviewHint('Press play to listen to the preview.');
+        } else {
+          showPreviewHint('External preview available. Click play to open.');
+        }
+      } else {
+        playPauseBtn.classList.add('disabled');
+        setPlayButtonState(false);
+        showPreviewHint('No preview available for this track.');
+      }
+    }
+
+    function hideTrackInfo() {
+      document.getElementById('trackInfoCard').classList.add('hidden');
+      if (activeSphere) {
+        activeSphere.outlineColor = activeSphere.metadata.baseColor.scale(1.15);
+        activeSphere.outlineWidth = activeSphere.metadata.baseOutlineWidth;
+        activeSphere.material.emissiveColor = activeSphere.metadata.baseEmissive;
+        emphasizeConnections(activeSphere, false);
+        activeSphere = null;
+      }
+      currentPlayingSphere = null;
+      stopPlayback();
+      currentTrackLinks = {};
+    }
+
+    function updateSpeed() {
+      const speed = config.speedValues[speedLevel];
+      document.getElementById('speedDisplay').textContent = speed;
+      showNotification(`Speed: ${speed}x`, '⚡');
+    }
+
+    function rescaleUniverse() {
+      spheres.forEach(sphere => {
+        sphere.position = sphere.originalPosition.scale(universeScale);
+      });
+    }
+
+    // SCENE CREATION
+    async function createScene() {
+      const canvas = document.getElementById('renderCanvas');
+      engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+      
+      scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.01, 0.015, 0.04, 1);
+      scene.imageProcessingConfiguration.contrast = 1.32;
+      scene.imageProcessingConfiguration.exposure = 1.12;
+      scene.imageProcessingConfiguration.toneMappingEnabled = true;
+      
+      camera = new BABYLON.UniversalCamera('camera', new BABYLON.Vector3(0, 0, -50), scene);
+      camera.attachControl(canvas, true);
+      camera.speed = 2;
+      camera.angularSensibility = 1500;
+      camera.minZ = 0.1;
+      camera.maxZ = 10000;
+      
+      const hemi = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0, 1, 0), scene);
+      hemi.intensity = 0.25;
+      hemi.groundColor = new BABYLON.Color3(0.02, 0.02, 0.06);
+      
+      const point = new BABYLON.PointLight('pointLight', new BABYLON.Vector3(0, 0, 0), scene);
+      point.intensity = 1.05;
+      point.diffuse = new BABYLON.Color3(0.4, 0.6, 0.9);
+      point.specular = new BABYLON.Color3(0.8, 0.9, 1);
+      
+      glowLayer = new BABYLON.GlowLayer('glow', scene);
+      glowLayer.intensity = 0.55;
+      
+      const starfield = BABYLON.MeshBuilder.CreateSphere('starfield', { diameter: 8000 }, scene);
+      const starMat = new BABYLON.StandardMaterial('starMat', scene);
+      starMat.emissiveColor = new BABYLON.Color3(0.04, 0.06, 0.13);
+      starMat.backFaceCulling = false;
+      starMat.alpha = 0.25;
+      starfield.material = starMat;
+      
+      await loadTracks();
+      setupControls();
+      setupEntryPanel();
+      setupPointerTracking();
+      
+      setTimeout(() => {
+        document.getElementById('loadingScreen').style.opacity = '0';
+        setTimeout(() => {
+          document.getElementById('loadingScreen').style.display = 'none';
+        }, 500);
+      }, 1000);
+    }
+
+    // LOAD TRACKS - UTILISE LE PROXY NODE.JS
+    async function loadTracks() {
+      try {
+        showNotification('Loading tracks...', '⏳');
+        
+        // ⬇️ CHANGÉ: Utilise le proxy Node.js au lieu de l'API Python directement
+        const response = await fetch('/api/tracks/sonic-map');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        allTracks = data;
+        
+        console.log('✅ Loaded tracks:', data.length);
+        document.getElementById('trackCount').textContent = data.length;
+        
+        let closestSphere = null, minDist = Infinity;
+        
+        data.forEach((track, idx) => {
+          const dist = Math.sqrt(
+            track.position.x ** 2 + 
+            track.position.y ** 2 + 
+            track.position.z ** 2
+          );
+          
+          if (dist > 300 && idx % 4 !== 0) return;
+          
+          const sphere = BABYLON.MeshBuilder.CreateSphere(track.id, {
+            diameter: (track.size || 2) * (dist > 300 ? 0.6 : 1)
+          }, scene);
+          
+          sphere.position = new BABYLON.Vector3(
+            track.position.x,
+            track.position.y,
+            track.position.z
+          );
+          sphere.originalPosition = sphere.position.clone();
+          
+          const mat = new BABYLON.StandardMaterial(`${track.id}_mat`, scene);
+          const color = new BABYLON.Color3(
+            (track.color?.r || 0.55),
+            (track.color?.g || 0.48),
+            (track.color?.b || 0.72)
+          );
+          const baseEmissive = color.scale((track.emissiveIntensity || 0.6) * 0.85);
+          mat.diffuseColor = color.scale(0.4);
+          mat.emissiveColor = baseEmissive;
+          mat.specularColor = new BABYLON.Color3(0.9, 0.92, 0.95);
+          mat.specularPower = 32;
+          mat.alpha = dist > 300 ? 0.42 : 0.9;
+          sphere.material = mat;
+          
+          sphere.renderOutline = true;
+          sphere.outlineWidth = 0.012 + (track.size || 2) * 0.006;
+          sphere.outlineColor = color.scale(1.15);
+
+          sphere.metadata = {
+            ...track,
+            baseColor: color,
+            baseEmissive,
+            baseOutlineWidth: sphere.outlineWidth,
+            baseScale: sphere.scaling.x,
+            pulsePhase: Math.random() * Math.PI * 2,
+            connections: [],
+            neighbors: []
+          };
+          spheres.push(sphere);
+          
+          if (dist < minDist) {
+            minDist = dist;
+            closestSphere = sphere;
+          }
+          
+          sphere.actionManager = new BABYLON.ActionManager(scene);
+          sphere.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+              BABYLON.ActionManager.OnPickTrigger,
+              () => handleSphereClick(sphere)
+            )
+          );
+          sphere.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+              BABYLON.ActionManager.OnPointerOverTrigger,
+              () => handleSphereHover(sphere)
+            )
+          );
+          sphere.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+              BABYLON.ActionManager.OnPointerOutTrigger,
+              () => handleSphereOut(sphere)
+            )
+          );
+        });
+        
+        if (closestSphere) {
+          camera.position = new BABYLON.Vector3(0, 0, 0);
+          camera.setTarget(new BABYLON.Vector3(
+            closestSphere.position.x,
+            closestSphere.position.y + 50,
+            closestSphere.position.z
+          ));
+        }
+        
+        buildConnections();
+        showNotification(`${data.length} tracks ready`, '✨');
+        
+      } catch (error) {
+        console.error('❌ Error loading tracks:', error);
+        showNotification(`Error: ${error.message}`, '⚠️');
+      }
+    }
+
+    function handleSphereClick(sphere) {
+      if (activeSphere && activeSphere !== sphere) {
+        activeSphere.outlineColor = activeSphere.metadata.baseColor.scale(1.15);
+        activeSphere.outlineWidth = activeSphere.metadata.baseOutlineWidth;
+        activeSphere.material.emissiveColor = activeSphere.metadata.baseEmissive;
+        emphasizeConnections(activeSphere, false);
+      }
+
+      activeSphere = sphere;
+      currentPlayingSphere = sphere;
+
+      sphere.outlineColor = new BABYLON.Color3(0.95, 0.97, 1);
+      sphere.outlineWidth = sphere.metadata.baseOutlineWidth * 1.8;
+      sphere.material.emissiveColor = sphere.metadata.baseColor.scale(1.4);
+      emphasizeConnections(sphere, true);
+
+      updateTrackInfo(sphere.metadata);
+      showNotification(`Playing: ${sphere.metadata.title}`, '▶️');
+      animateCameraTo(sphere.position);
+      startTrackPlayback(sphere.metadata);
+    }
+
+    function animateCameraTo(targetPosition, duration = 1000) {
+      const startPosition = camera.position.clone();
+      const distance = BABYLON.Vector3.Distance(startPosition, targetPosition);
+      const finalPosition = targetPosition.subtract(
+        camera.getDirection(BABYLON.Axis.Z).scale(distance * 0.3)
+      );
+      
+      const frames = duration / 16;
+      let currentFrame = 0;
+      
+      const interval = setInterval(() => {
+        currentFrame++;
+        const progress = currentFrame / frames;
+        const eased = 1 - Math.pow(1 - progress, 3);
+        camera.position = BABYLON.Vector3.Lerp(startPosition, finalPosition, eased);
+        if (currentFrame >= frames) clearInterval(interval);
+      }, 16);
+    }
+
+    function setupControls() {
+      window.addEventListener('keydown', (e) => {
+        keyMap[e.code] = true;
+        
+        if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].includes(e.code)) {
+          speedLevel = parseInt(e.code.replace('Digit', '')) - 1;
+          updateSpeed();
+        }
+        
+        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') scaleKeyDir = 1;
+        if (e.key === '-' || e.code === 'NumpadSubtract') scaleKeyDir = -1;
+      });
+      
+      window.addEventListener('keyup', (e) => {
+        keyMap[e.code] = false;
+        if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') && scaleKeyDir === 1) scaleKeyDir = 0;
+        if ((e.key === '-' || e.code === 'NumpadSubtract') && scaleKeyDir === -1) scaleKeyDir = 0;
+      });
+      
+      scene.registerBeforeRender(() => {
+        if (scaleKeyDir !== 0) {
+          targetScale *= scaleKeyDir > 0 ? 1.012 : 0.988;
+          targetScale = Math.min(Math.max(targetScale, 0.2), 5);
+        }
+        universeScale += (targetScale - universeScale) * 0.12;
+        if (Math.abs(targetScale - universeScale) > 0.001) rescaleUniverse();
+        
+        const speed = config.speedValues[speedLevel] * engine.getDeltaTime() / 1000 * 6;
+        let forward = 0, right = 0;
+        
+        if (keyMap['KeyW'] || keyMap['ArrowUp'] || keyMap['KeyZ']) forward += 1;
+        if (keyMap['KeyS'] || keyMap['ArrowDown']) forward -= 1;
+        if (keyMap['KeyD'] || keyMap['ArrowRight']) right += 1;
+        if (keyMap['KeyA'] || keyMap['ArrowLeft'] || keyMap['KeyQ']) right -= 1;
+        
+        if (forward !== 0 || right !== 0) {
+          const dir = camera.getDirection(BABYLON.Axis.Z).scale(forward * speed);
+          const lat = camera.getDirection(BABYLON.Axis.X).scale(right * speed);
+          camera.position.addInPlace(dir).addInPlace(lat);
+        }
+
+        const time = performance.now() / 1000;
+        spheres.forEach(sphere => {
+          if (!sphere.metadata || !sphere.metadata.baseScale) return;
+          const bpm = sphere.metadata.bpm || sphere.metadata.audio?.bpm || 120;
+          const energy = sphere.metadata.audio?.energy ?? sphere.metadata.energy ?? 0.5;
+          const pulseSpeed = Math.max(0.35, bpm / 200);
+          const amplitude = 0.03 + energy * 0.07;
+          const wave = Math.sin(time * pulseSpeed * Math.PI + sphere.metadata.pulsePhase) * amplitude;
+          const scale = sphere.metadata.baseScale * (1 + wave);
+          sphere.scaling.set(scale, scale, scale);
+        });
+      });
+    }
+
+    function buildConnections(maxNeighbors = 3, maxDistance = 220) {
+      const created = new Set();
+      spheres.forEach(sphere => {
+        const distances = spheres
+          .filter(other => other !== sphere)
+          .map(other => ({
+            other,
+            dist: BABYLON.Vector3.Distance(sphere.originalPosition, other.originalPosition)
+          }))
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, maxNeighbors)
+          .filter(entry => entry.dist <= maxDistance);
+
+        sphere.metadata.neighbors = distances.map(entry => entry.other.metadata);
+
+        distances.forEach(({ other }) => {
+          const key = [sphere.metadata.id, other.metadata.id].sort().join('_');
+          if (created.has(key)) return;
+          created.add(key);
+          const path = [sphere.position, other.position];
+          const tube = BABYLON.MeshBuilder.CreateTube(`bond_${key}`, {
+            path,
+            radius: 0.25,
+            tessellation: 10
+          }, scene);
+          const baseColor = new BABYLON.Color3(0.5, 0.64, 0.92);
+          const mat = new BABYLON.StandardMaterial(`bondMat_${key}`, scene);
+          mat.diffuseColor = baseColor.scale(0.12);
+          mat.emissiveColor = baseColor.scale(0.24);
+          mat.alpha = 0.4;
+          mat.specularColor = baseColor.scale(0.1);
+          tube.material = mat;
+          tube.isPickable = false;
+          tube.metadata = {
+            baseEmissive: mat.emissiveColor,
+            baseAlpha: mat.alpha
+          };
+          connectionLines.push(tube);
+          sphere.metadata.connections.push(tube);
+          other.metadata.connections.push(tube);
+        });
+      });
+    }
+
+    function emphasizeConnections(sphere, active) {
+      (sphere.metadata?.connections || []).forEach(line => {
+        if (!line.material || !line.metadata) return;
+        if (active) {
+          line.material.emissiveColor = new BABYLON.Color3(0.9, 0.98, 1);
+          line.material.alpha = 0.7;
+        } else {
+          line.material.emissiveColor = line.metadata.baseEmissive;
+          line.material.alpha = line.metadata.baseAlpha;
+        }
+      });
+    }
+
+    function handleSphereHover(sphere) {
+      if (currentEntryMode === 'add') return;
+      emphasizeConnections(sphere, true);
+      showBondCard(sphere.metadata);
+    }
+
+    function handleSphereOut(sphere) {
+      if (sphere !== activeSphere) {
+        emphasizeConnections(sphere, false);
+      }
+      hideBondCard();
+    }
+
+    function showBondCard(track) {
+      bondTitle.textContent = track.title || 'Untitled';
+      bondMeta.textContent = `${(track.artist || 'Unknown').toUpperCase()} • ${(track.genre || 'Unmapped').toUpperCase()}`;
+      bondNeighbors.innerHTML = '';
+      const neighbors = track.neighbors || [];
+      if (!neighbors.length) {
+        const pill = document.createElement('span');
+        pill.className = 'bond-pill';
+        pill.textContent = 'Solo orbit';
+        bondNeighbors.appendChild(pill);
+      } else {
+        neighbors.slice(0, 3).forEach(nb => {
+          const pill = document.createElement('span');
+          pill.className = 'bond-pill';
+          pill.textContent = nb.title || 'Unknown';
+          bondNeighbors.appendChild(pill);
+        });
+      }
+      bondCard.classList.remove('hidden');
+    }
+
+    function hideBondCard() {
+      bondCard.classList.add('hidden');
+    }
+
+    function setupEntryPanel() {
+      const buttons = document.querySelectorAll('.entry-btn');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.mode;
+          if (mode === currentEntryMode) return;
+          currentEntryMode = mode;
+          buttons.forEach(b => b.classList.toggle('active', b === btn));
+          if (mode === 'roam') {
+            showNotification('Roam mode: follow instinct', '🛰️');
+          } else if (mode === 'locate') {
+            showNotification('Locate mode: choose a known anchor track', '🔍');
+          } else if (mode === 'add') {
+            showNotification('Add mode: soon you will be able to summon new tracks here', '➕');
+          }
+        });
+      });
+    }
+
+    function setupPointerTracking() {
+      scene.onPointerObservable.add(pointerInfo => {
+        if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERMOVE && pointerInfo.event) {
+          if (bondCard.classList.contains('hidden')) return;
+          const { clientX, clientY } = pointerInfo.event;
+          bondCard.style.left = `${clientX + 16}px`;
+          bondCard.style.top = `${clientY + 16}px`;
+        }
+      });
+    }
+
+    // UI EVENT HANDLERS
+    document.querySelectorAll('.genre-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.genre-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const genre = btn.dataset.genre;
+        
+        if (genre === 'all') {
+          spheres.forEach(s => s.setEnabled(true));
+          showNotification(`Showing all ${spheres.length} tracks`, '🎸');
+        } else {
+          let visibleCount = 0;
+          spheres.forEach(s => {
+            const trackGenre = (s.metadata.genre || '').toLowerCase();
+            const isVisible = trackGenre.includes(genre.toLowerCase());
+            s.setEnabled(isVisible);
+            if (isVisible) visibleCount++;
+          });
+          showNotification(`Filter: ${genre.toUpperCase()} (${visibleCount} tracks)`, '🎸');
+        }
+      });
+    });
+    // INITIALIZATION
+    createScene().then(() => {
+      engine.runRenderLoop(() => {
+        if (scene) scene.render();
+      });
+    });
+    
+    window.addEventListener('resize', () => engine.resize());
+  </script>
+</body>
+</html>

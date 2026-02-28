@@ -8,18 +8,43 @@ yarn.lock
 
 # Environnement
 .env
+*.env.local
 
 # Fichiers de build
 /build
+dist/
+programs/*/target/
+frontend/build/
 
 # Fichiers d'upload
 /public/uploads/*
 !/public/uploads/profiles/.gitkeep
 !/public/uploads/tracks/.gitkeep
 
+# Secrets and local credentials
+secrets/
+music-pipeline/secrets/
+
+# Local media downloads
+*.mp4
+
 # Logs
 logs
 *.log
+
+# Python
+venv/
+*/venv/
+music-pipeline/.venv/
+__pycache__/
+*.py[cod]
+music-pipeline/processing/audio_assets/
+music-pipeline/storage/
+music-pipeline/DEL
+music-pipeline/HGETALL
+music-pipeline/LLEN
+music-pipeline/LRANGE
+music-pipeline/LREM
 
 # Système d'exploitation
 .DS_Store

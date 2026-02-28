@@ -8,6 +8,10 @@ import SonicMapPage from './pages/SonicMapPage';
 // Icons
 import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home, Menu, X, ArrowLeft, Download, ExternalLink, AlertTriangle, CheckCircle, Clock, Calendar, MapPin, Heart, MessageCircle, Share, Play, Edit, Delete } from 'lucide-react';
 
+const API_BASE_URL = (process.env.REACT_APP_API_URL || 'http://localhost:5001').replace(/\/$/, '');
+const MAGIC_PUBLISHABLE_KEY = process.env.REACT_APP_MAGIC_PUBLISHABLE_KEY || '';
+const buildApiUrl = (path = '') => `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+
 /**
  * Main App Component - CoStar-inspired Black & White Design
  */
@@ -23,9 +27,10 @@ function App() {
   useEffect(() => {
     const initMagic = async () => {
       try {
-        const magic = new Magic('pk_live_DAE97419AE6EBC48', {
-          extensions: []
-        });
+        if (!MAGIC_PUBLISHABLE_KEY) {
+          throw new Error('MAGIC_PUBLISHABLE_KEY is not configured');
+        }
+        const magic = new Magic(MAGIC_PUBLISHABLE_KEY, { extensions: [] });
         setMagicSDK(magic);
         
         const isLoggedIn = await magic.user.isLoggedIn();
@@ -37,7 +42,7 @@ function App() {
             
             if (token) {
               try {
-                const response = await fetch('http://localhost:5001/api/users/profile', {
+                const response = await fetch(buildApiUrl('/api/users/profile'), {
                   headers: {
                     'Authorization': `Bearer ${token}`
                   }
@@ -223,7 +228,7 @@ function App() {
                     <div className="w-8 h-8 rounded-full bg-costar-gray-dark flex items-center justify-center">
                       {user.profilePicture ? (
                         <img 
-                          src={`http://localhost:5001/uploads/profiles/${user.profilePicture}`}
+                          src={`${API_BASE_URL}/uploads/profiles/${user.profilePicture}`}
                           alt={user.username}
                           className="w-full h-full object-cover rounded-full"
                         />
@@ -524,7 +529,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       await magicSDK.auth.loginWithMagicLink({ email });
       const didToken = await magicSDK.user.getIdToken();
       
-      const response = await fetch('http://localhost:5001/api/magic/auth', {
+      const response = await fetch(buildApiUrl('/api/magic/auth'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -566,7 +571,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:5001/api/users/login', {
+      const response = await fetch(buildApiUrl('/api/users/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -604,7 +609,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:5001/api/users/register', {
+      const response = await fetch(buildApiUrl('/api/users/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -827,7 +832,7 @@ function ProfilePage({ user, setUser, onBack }) {
     
     setWalletLoading(true);
     try {
-      const response = await fetch('http://localhost:5001/api/magic/wallet', {
+      const response = await fetch(buildApiUrl('/api/magic/wallet'), {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }
@@ -874,7 +879,7 @@ function ProfilePage({ user, setUser, onBack }) {
         formDataObj.append('profilePicture', profilePicture);
       }
       
-      const response = await fetch('http://localhost:5001/api/users/profile', {
+      const response = await fetch(buildApiUrl('/api/users/profile'), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${user.token}`
@@ -907,7 +912,7 @@ function ProfilePage({ user, setUser, onBack }) {
     setSuccess('');
     
     try {
-      const response = await fetch('http://localhost:5001/api/users/become-artist', {
+      const response = await fetch(buildApiUrl('/api/users/become-artist'), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${user.token}`,
@@ -969,7 +974,7 @@ function ProfilePage({ user, setUser, onBack }) {
                   <div className="w-16 h-16 rounded-full bg-costar-gray-dark flex items-center justify-center overflow-hidden">
                     {user.profilePicture ? (
                       <img 
-                        src={`http://localhost:5001/uploads/profiles/${user.profilePicture}`}
+                        src={`${API_BASE_URL}/uploads/profiles/${user.profilePicture}`}
                         alt={user.username}
                         className="w-full h-full object-cover"
                       />
@@ -1137,7 +1142,7 @@ function TracksPage({ user, onBack, navigateTo }) {
 
   const fetchTracks = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/tracks/user', {
+      const response = await fetch(buildApiUrl('/api/tracks/user'), {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }
@@ -1236,7 +1241,7 @@ function TracksPage({ user, onBack, navigateTo }) {
                 
                 <div className="flex space-x-2">
                   <a 
-                    href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
+                    href={`${API_BASE_URL}/uploads/tracks/${track.audioFile}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn-ghost-costar text-xs"
@@ -1342,7 +1347,7 @@ function UploadPage({ user, onBack }) {
         uploadData.append('coverImage', coverImage);
       }
       
-      const response = await fetch('http://localhost:5001/api/tracks', {
+      const response = await fetch(buildApiUrl('/api/tracks'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${user.token}`
@@ -1527,7 +1532,7 @@ function ProofsPage({ user, onBack }) {
   const fetchProofs = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/proofs/user/me', {
+      const response = await fetch(buildApiUrl('/api/proofs/user/me'), {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }
@@ -1554,7 +1559,7 @@ function ProofsPage({ user, onBack }) {
       setError('');
       setSuccess('');
 
-      const response = await fetch(`http://localhost:5001/api/proofs/pay/${proofId}`, {
+      const response = await fetch(buildApiUrl(`/api/proofs/pay/${proofId}`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${user.token}`,
@@ -1583,7 +1588,7 @@ function ProofsPage({ user, onBack }) {
       setLoading(true);
       setError('');
 
-      const response = await fetch(`http://localhost:5001/api/proofs/download/${proofId}`, {
+      const response = await fetch(buildApiUrl(`/api/proofs/download/${proofId}`), {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }

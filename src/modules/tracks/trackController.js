@@ -4,6 +4,8 @@ const User = require('../user/userModel');
 const path = require('path');
 const fs = require('fs');
 const { proofService } = require('../../../dist/account-abstraction');
+const { parseFile } = require('music-metadata');
+const pipelineService = require('./pipelineService');
 
 // @desc    Upload a track
 // @route   POST /api/tracks
@@ -19,11 +21,26 @@ exports.uploadTrack = async (req, res) => {
         message: 'Please upload an audio file'
       });
     }
-    
-    // Pour un système de production, calcul de la durée avec une bibliothèque comme music-metadata
-    // Ici nous utilisons une valeur factice
-    const duration = 180; // 3 minutes factices
-    
+    const uploadsDir = path.join(__dirname, '../../../public/uploads/tracks');
+    const audioFilePath = path.join(uploadsDir, req.file.filename);
+
+    let duration = 0;
+    try {
+      const metadata = await parseFile(audioFilePath);
+      duration = metadata.format.duration ? Math.round(metadata.format.duration) : 0;
+    } catch (metadataError) {
+      console.warn(`Unable to parse metadata for ${req.file.filename}:`, metadataError.message);
+    }
+
+    if (!duration) {
+      try {
+        const stats = fs.statSync(audioFilePath);
+        duration = Math.round(stats.size / (192000 / 8)); // rudimentary fallback
+      } catch (statError) {
+        duration = 180;
+      }
+    }
+
     // Créer le track dans la base de données
     const track = await Track.create({
       title,
@@ -38,6 +55,24 @@ exports.uploadTrack = async (req, res) => {
     
     // Mettre à jour le compteur de tracks de l'utilisateur
     await User.findByIdAndUpdate(req.user.id, { $inc: { tracksCount: 1 } });
+
+    // Synchroniser avec le pipeline audio (fire-and-forget)
+    const publicBaseUrl = process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 5001}`;
+    const audioUrl = `${publicBaseUrl.replace(/\/$/, '')}/uploads/tracks/${req.file.filename}`;
+    pipelineService
+      .ingestTrack({
+        mongoTrackId: track._id.toString(),
+        title,
+        artist: req.user.username,
+        genre,
+        tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
+        description,
+        durationSeconds: duration,
+        audioUrl
+      })
+      .catch(err => {
+        console.error('Pipeline ingestion failed:', err.message);
+      });
     
     res.status(201).json({
       success: true,
