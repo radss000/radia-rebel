@@ -73,7 +73,7 @@ class YouTubePreviewAdapter(PreviewAdapter):
             ]
         if YTDLP_COOKIES_PATH:
             ydl_opts["cookiefile"] = YTDLP_COOKIES_PATH
-        if YTDLP_COOKIES_FROM_BROWSER:
+        elif YTDLP_COOKIES_FROM_BROWSER:
             cookies_from_browser = _parse_cookies_from_browser(YTDLP_COOKIES_FROM_BROWSER)
             if cookies_from_browser:
                 ydl_opts["cookiesfrombrowser"] = cookies_from_browser

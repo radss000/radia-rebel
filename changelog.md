@@ -3,6 +3,7 @@
 - Replaced the cobalt-backed YouTube preview adapter with a yt-dlp download path that returns local audio files to the preview worker.
 - Updated docs/env examples with yt-dlp tuning options while retaining `COBALT_PREVIEW_DURATION_SECONDS` for preview trimming.
 - Documented optional yt-dlp tuning (cookies/proxy/user-agent/impersonation) for more reliable YouTube downloads.
+- Added a `processing.youtube.cookies_refresh` CLI to export browser cookies into a reusable file for production refresh workflows.
 
 ## 2025-11-20 · Cobalt-backed YouTube previews
 
