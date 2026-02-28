@@ -17,7 +17,7 @@ from .youtube_utils import extract_video_id
 
 logger = logging.getLogger(__name__)
 
-YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "bestaudio/best")
+YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "best")
 YTDLP_AUDIO_FORMAT = os.getenv("YTDLP_AUDIO_FORMAT", "mp3")
 YTDLP_COOKIES_PATH = os.getenv("YTDLP_COOKIES_PATH")
 YTDLP_COOKIES_FROM_BROWSER = os.getenv("YTDLP_COOKIES_FROM_BROWSER")
@@ -29,7 +29,7 @@ YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
 YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FALLBACK_YTDLP_FORMAT = "bestaudio/best"
+FALLBACK_FORMATS = ["bestaudio/best", "best"]
 
 
 def _parse_cookies_from_browser(value: str):
@@ -55,12 +55,15 @@ def _run_yt_dlp(target_url: str, ydl_opts: dict) -> dict:
             return ydl.extract_info(target_url, download=True)
     except DownloadError as exc:
         message = str(exc)
-        if "Requested format is not available" in message and ydl_opts.get("format") != FALLBACK_YTDLP_FORMAT:
-            logger.warning("yt-dlp format unavailable, retrying with %s", FALLBACK_YTDLP_FORMAT)
-            retry_opts = dict(ydl_opts)
-            retry_opts["format"] = FALLBACK_YTDLP_FORMAT
-            with YoutubeDL(retry_opts) as ydl:
-                return ydl.extract_info(target_url, download=True)
+        if "Requested format is not available" in message:
+            for fallback in FALLBACK_FORMATS:
+                if ydl_opts.get("format") == fallback:
+                    continue
+                logger.warning("yt-dlp format unavailable, retrying with %s", fallback)
+                retry_opts = dict(ydl_opts)
+                retry_opts["format"] = fallback
+                with YoutubeDL(retry_opts) as ydl:
+                    return ydl.extract_info(target_url, download=True)
         raise
 
 class YouTubePreviewAdapter(PreviewAdapter):

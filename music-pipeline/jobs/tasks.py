@@ -17,10 +17,14 @@ from psycopg2.extras import RealDictCursor, Json
 import tempfile
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENV_PATH = PROJECT_ROOT / ".env"
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH, override=False)
-else:
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]
+pipeline_env = PIPELINE_ROOT / ".env"
+repo_env = PROJECT_ROOT / ".env"
+if pipeline_env.exists():
+    load_dotenv(dotenv_path=pipeline_env, override=False)
+if repo_env.exists():
+    load_dotenv(dotenv_path=repo_env, override=False)
+if not pipeline_env.exists() and not repo_env.exists():
     load_dotenv(override=False)
 
 from database.utils import get_db_connection
@@ -368,7 +372,14 @@ def embedding_task(job_id: str) -> None:
             raise ValueError("Audio buffer empty for embedding generation")
         audio_batch = [audio]
 
-        clap_model = _get_clap_model()
+        try:
+            clap_model = _get_clap_model()
+        except RuntimeError as exc:  # pragma: no cover - optional dependency
+            if "laion-clap not installed" in str(exc):
+                logger.warning("Skipping embedding job %s: %s", job_id, exc)
+                _mark_job_succeeded(conn, job_id, {"skipped": True, "reason": str(exc)})
+                return
+            raise
         embedding = clap_model.get_audio_embedding_from_data(x=audio_batch, use_tensor=False)[0]
         embedding = np.asarray(embedding, dtype=np.float32)
 
@@ -500,7 +511,7 @@ def _resolve_secret_path(raw_path: Optional[str]) -> Optional[Path]:
         return None
     path = Path(raw_path)
     if not path.is_absolute():
-        path = PROJECT_ROOT / path
+        path = PIPELINE_ROOT / path
     return path
 
 
