@@ -29,6 +29,7 @@ YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
 YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FALLBACK_YTDLP_FORMAT = "bestaudio/best"
 
 
 def _parse_cookies_from_browser(value: str):
@@ -46,6 +47,21 @@ def _resolve_cookie_path(raw_path: str) -> Path:
     if not path.is_absolute():
         path = PROJECT_ROOT / path
     return path
+
+
+def _run_yt_dlp(target_url: str, ydl_opts: dict) -> dict:
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(target_url, download=True)
+    except DownloadError as exc:
+        message = str(exc)
+        if "Requested format is not available" in message and ydl_opts.get("format") != FALLBACK_YTDLP_FORMAT:
+            logger.warning("yt-dlp format unavailable, retrying with %s", FALLBACK_YTDLP_FORMAT)
+            retry_opts = dict(ydl_opts)
+            retry_opts["format"] = FALLBACK_YTDLP_FORMAT
+            with YoutubeDL(retry_opts) as ydl:
+                return ydl.extract_info(target_url, download=True)
+        raise
 
 class YouTubePreviewAdapter(PreviewAdapter):
     """Resolve YouTube previews via yt-dlp."""
@@ -108,8 +124,7 @@ class YouTubePreviewAdapter(PreviewAdapter):
             ydl_opts["http_headers"] = headers
 
         try:
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(target_url, download=True)
+            info = _run_yt_dlp(target_url, ydl_opts)
         except DownloadError as exc:
             raise PreviewAdapterError(f"yt-dlp download failed: {exc}") from exc
         except Exception as exc:
