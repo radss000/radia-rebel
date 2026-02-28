@@ -444,12 +444,12 @@ def position_task(job_id: str) -> None:
             raise ValueError(f"Track {track_id} not found")
 
         features = {
-            "energy": track.get("energy", 0.5),
-            "danceability": track.get("danceability", 0.5),
-            "acousticness": track.get("acousticness", 0.5),
-            "brightness": track.get("brightness", 0.5),
-            "bass": track.get("bass", 0.5),
-            "valence": track.get("valence", 0.5),
+            "energy": track.get("energy") or 0.5,
+            "danceability": track.get("danceability") or 0.5,
+            "acousticness": track.get("acousticness") or 0.5,
+            "brightness": track.get("brightness") or 0.5,
+            "bass": track.get("bass") or 0.5,
+            "valence": track.get("valence") or 0.5,
         }
         position, color, size, emissive = derive_position(features)
         with conn.cursor() as cursor:

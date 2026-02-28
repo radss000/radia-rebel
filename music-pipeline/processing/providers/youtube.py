@@ -20,10 +20,23 @@ logger = logging.getLogger(__name__)
 YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "bestaudio/best")
 YTDLP_AUDIO_FORMAT = os.getenv("YTDLP_AUDIO_FORMAT", "mp3")
 YTDLP_COOKIES_PATH = os.getenv("YTDLP_COOKIES_PATH")
+YTDLP_COOKIES_FROM_BROWSER = os.getenv("YTDLP_COOKIES_FROM_BROWSER")
 YTDLP_PROXY = os.getenv("YTDLP_PROXY")
 YTDLP_USER_AGENT = os.getenv("YTDLP_USER_AGENT")
 YTDLP_IMPERSONATE = os.getenv("YTDLP_IMPERSONATE")
 YTDLP_PLAYER_CLIENTS = os.getenv("YTDLP_PLAYER_CLIENTS", "android")
+YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
+YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
+
+
+def _parse_cookies_from_browser(value: str):
+    raw = value.strip()
+    if not raw:
+        return None
+    if ":" in raw:
+        browser, profile = [part.strip() for part in raw.split(":", 1)]
+        return (browser, profile) if browser else None
+    return (raw,)
 
 class YouTubePreviewAdapter(PreviewAdapter):
     """Resolve YouTube previews via yt-dlp."""
@@ -60,6 +73,10 @@ class YouTubePreviewAdapter(PreviewAdapter):
             ]
         if YTDLP_COOKIES_PATH:
             ydl_opts["cookiefile"] = YTDLP_COOKIES_PATH
+        if YTDLP_COOKIES_FROM_BROWSER:
+            cookies_from_browser = _parse_cookies_from_browser(YTDLP_COOKIES_FROM_BROWSER)
+            if cookies_from_browser:
+                ydl_opts["cookiesfrombrowser"] = cookies_from_browser
         if YTDLP_PROXY:
             ydl_opts["proxy"] = YTDLP_PROXY
         if YTDLP_USER_AGENT:
@@ -70,6 +87,13 @@ class YouTubePreviewAdapter(PreviewAdapter):
             clients = [client.strip() for client in YTDLP_PLAYER_CLIENTS.split(",") if client.strip()]
             if clients:
                 ydl_opts["extractor_args"] = {"youtube": {"player_client": clients}}
+        if YTDLP_REFERER or YTDLP_ORIGIN:
+            headers = {}
+            if YTDLP_REFERER:
+                headers["Referer"] = YTDLP_REFERER
+            if YTDLP_ORIGIN:
+                headers["Origin"] = YTDLP_ORIGIN
+            ydl_opts["http_headers"] = headers
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
