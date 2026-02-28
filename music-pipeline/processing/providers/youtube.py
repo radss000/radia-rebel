@@ -28,6 +28,8 @@ YTDLP_PLAYER_CLIENTS = os.getenv("YTDLP_PLAYER_CLIENTS", "android")
 YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
 YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _parse_cookies_from_browser(value: str):
     raw = value.strip()
@@ -37,6 +39,13 @@ def _parse_cookies_from_browser(value: str):
         browser, profile = [part.strip() for part in raw.split(":", 1)]
         return (browser, profile) if browser else None
     return (raw,)
+
+
+def _resolve_cookie_path(raw_path: str) -> Path:
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path
 
 class YouTubePreviewAdapter(PreviewAdapter):
     """Resolve YouTube previews via yt-dlp."""
@@ -72,7 +81,10 @@ class YouTubePreviewAdapter(PreviewAdapter):
                 }
             ]
         if YTDLP_COOKIES_PATH:
-            ydl_opts["cookiefile"] = YTDLP_COOKIES_PATH
+            cookie_path = _resolve_cookie_path(YTDLP_COOKIES_PATH)
+            if not cookie_path.exists():
+                raise PreviewAdapterError(f"yt-dlp cookies file not found: {cookie_path}")
+            ydl_opts["cookiefile"] = str(cookie_path)
         elif YTDLP_COOKIES_FROM_BROWSER:
             cookies_from_browser = _parse_cookies_from_browser(YTDLP_COOKIES_FROM_BROWSER)
             if cookies_from_browser:
