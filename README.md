@@ -48,10 +48,11 @@ The `embedding` job now generates real vectors from the cached preview using LAI
    pip install torch==2.2.2 torchaudio==2.2.2 --extra-index-url https://download.pytorch.org/whl/cpu
    pip install laion-clap==1.1.4
    ```
-2. Configure the model via environment variables (see `.env.example`). The worker defaults to the bundled `HTSAT-tiny` weights published with laion-clap; set `CLAP_AMODEL=HTSAT-tiny` (default) unless you have downloaded a matching checkpoint locally. If you want `HTSAT-large` or another architecture, point `CLAP_CHECKPOINT_PATH` at the compatible `.pt` file to prevent shape mismatches. `CLAP_ENABLE_FUSION` toggles the fusion variant, and `EMBEDDING_SAMPLE_RATE` defaults to 48 kHz.
+2. Configure the model via environment variables (see `.env.example`). Use the music-specialized checkpoint by setting `CLAP_CHECKPOINT_PATH=checkpoints/music_audioset_epoch_15_esc_90.14.pt`, `CLAP_AMODEL=HTSAT-base`, `CLAP_ENABLE_FUSION=false`, and `EMBEDDING_SAMPLE_RATE=48000`. If you want another architecture, point `CLAP_CHECKPOINT_PATH` at the compatible `.pt` file to prevent shape mismatches.
+3. (macOS) If MPS runs out of memory, set `CLAP_DEVICE=cpu` to force CPU inference for stability.
 3. Ensure Qdrant is reachable if you want vectors pushed to the `music_embeddings` collection; set `QDRANT_HOST/PORT/API_KEY`.
 4. Configure longer RQ timeouts if your first CLAP download takes a while (see `JOB_TIMEOUT_DEFAULT` / `EMBEDDING_JOB_TIMEOUT` in `.env.example`—embedding defaults to 900 s). This prevents slow checkpoints from timing out mid-transfer.
-5. Start the RQ worker with `python -m jobs.worker`. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
+5. Start the RQ worker with `python -m jobs.worker`. The worker warms a singleton CLAP model at startup, so all embedding jobs reuse the same instance. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
 
 If Qdrant or laion-clap aren't installed, the worker logs a warning but the rest of the pipeline continues.
 

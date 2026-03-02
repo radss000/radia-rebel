@@ -1,3 +1,23 @@
+## 2026-03-01 · CLAP checkpoint switch (Task-01) + pipeline smoke test
+
+- Switched CLAP to the music-specific checkpoint and enforced `CLAP_CHECKPOINT_PATH` at load time (error if missing).
+- Added `music-pipeline/scripts/download_clap_checkpoint.py` with progress output and size validation; created `music-pipeline/checkpoints/.gitkeep` and `music-pipeline/.gitignore` entry for checkpoints.
+- Updated `music-pipeline/.env` + `music-pipeline/.env.example` to the new CLAP config (`CLAP_CHECKPOINT_PATH`, `CLAP_AMODEL=HTSAT-base`, `CLAP_ENABLE_FUSION=false`, `EMBEDDING_SAMPLE_RATE=48000`, `CLAP_DEVICE=cpu`).
+- Adjusted checkpoint size guard to 2.1–2.4GB after validating the official file is ~2.2GB at the given URL.
+- Added a CLAP singleton warm-up in the worker plus a benchmark script (`music-pipeline/scripts/benchmark_clap_singleton.py`) to log the job timing ratio.
+- Pipeline smoke test: `preview_fetch` → `audio_features` → `embedding` → `position` completed successfully with the new checkpoint (see worker logs).
+
+### Plan status (RADIA-REBEL V1)
+- Done: TASK-01 (checkpoint switch + validated embedding run).
+- Remaining: TASK-02 through TASK-12 (singleton warm-up, core extractor, UMAP, key/scale, Qdrant payload, /similar, E2E, text search, lazy UMAP, seeding, docs).
+
+## 2025-11-22 · Status snapshot
+
+- Ingestion YouTube (search-ingest + preview fetch) fonctionne avec yt-dlp + cookies file (`YTDLP_COOKIES_PATH`), fallback format auto si le format demandé n’existe pas.
+- Worker charge désormais `.env` depuis `music-pipeline/` en priorité et résout `GCP_CREDENTIALS_PATH` relatif au pipeline pour le download GCS.
+- CLI `processing.youtube.cookies_refresh` disponible pour régénérer les cookies.
+- Embedding vector reste à stabiliser (jobs `embedding` encore en attente selon l’environnement).
+
 ## 2025-11-21 · YouTube previews back on yt-dlp
 
 - Replaced the cobalt-backed YouTube preview adapter with a yt-dlp download path that returns local audio files to the preview worker.
