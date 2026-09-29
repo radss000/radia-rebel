@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+data/*.json
+data/*.tmp
+uploads/
+target/
+programs/*/target/
+.anchor/
+test-ledger/
+*.log
+.DS_Store
+devnet-keypair.json
+
+!data/.gitkeep

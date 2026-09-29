@@ -1,0 +1,36 @@
+{
+  "name": "radia-proof",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Solana timestamp proofs for audio files",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @radia-proof/api\" \"npm run dev -w @radia-proof/web\"",
+    "dev:api": "npm run dev -w @radia-proof/api",
+    "dev:web": "npm run dev -w @radia-proof/web",
+    "build": "npm run build -w @radia-proof/web",
+    "start": "npm run start -w @radia-proof/api",
+    "test": "npm run test -w @radia-proof/api",
+    "test:e2e": "node scripts/e2e-devnet.mjs",
+    "keypair:generate": "node scripts/generate-keypair.mjs",
+    "anchor:build": "anchor build",
+    "anchor:test": "anchor test --provider.cluster localnet"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@types/chai": "^5.2.2",
+    "@types/mocha": "^10.0.10",
+    "chai": "^5.2.1",
+    "concurrently": "^9.2.0"
+    ,"mocha": "^11.7.1",
+    "ts-mocha": "^11.1.0",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

@@ -94,6 +94,7 @@ CREATE TABLE tracks (
     position_x FLOAT,
     position_y FLOAT,
     position_z FLOAT,
+    position_method VARCHAR,
     
     -- Visual attributes (for 3D rendering)
     color_r FLOAT DEFAULT 0.7,

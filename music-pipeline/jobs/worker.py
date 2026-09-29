@@ -28,6 +28,10 @@ def main() -> None:
     if not pipeline_env.exists() and not repo_env.exists():
         load_dotenv(override=False)
 
+    from processing.runtime import configure_numba_cache
+
+    configure_numba_cache()
+
     from processing.embeddings.clap_singleton import get_clap_model
 
     # SINGLETON — warm the CLAP model in the worker parent process so forked jobs reuse it.

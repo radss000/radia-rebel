@@ -54,6 +54,8 @@ The `embedding` job now generates real vectors from the cached preview using LAI
 4. Configure longer RQ timeouts if your first CLAP download takes a while (see `JOB_TIMEOUT_DEFAULT` / `EMBEDDING_JOB_TIMEOUT` in `.env.example`—embedding defaults to 900 s). This prevents slow checkpoints from timing out mid-transfer.
 5. Start the RQ worker with `python -m jobs.worker`. The worker warms a singleton CLAP model at startup, so all embedding jobs reuse the same instance. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
 
+The worker keeps Numba JIT enabled for UMAP performance and configures a writable cache under the system temporary directory. Set `NUMBA_CACHE_DIR` only when the deployment requires a persistent custom cache path; do not set `NUMBA_DISABLE_JIT`, because it makes full map recalculation impractically slow.
+
 If Qdrant or laion-clap aren't installed, the worker logs a warning but the rest of the pipeline continues.
 
 ### YouTube preview fetching

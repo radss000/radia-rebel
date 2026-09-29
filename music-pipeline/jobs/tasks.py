@@ -27,7 +27,13 @@ if not pipeline_env.exists() and not repo_env.exists():
     load_dotenv(override=False)
 
 from database.utils import get_db_connection
+from processing.runtime import configure_numba_cache
+
+configure_numba_cache()
+
+from processing.audio_core_extractor import extract_core_segment
 from processing.audio_features import extract_audio_features, derive_position, load_audio_mono
+from jobs.position_job import run_position_job
 from processing.embeddings.clap_singleton import get_clap_model
 from processing.audio_assets.service import StorageClient, process_audio_asset
 
@@ -48,6 +54,7 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH")
+GCS_DOWNLOAD_TIMEOUT = int(os.getenv("GCS_DOWNLOAD_TIMEOUT", os.getenv("AUDIO_PREVIEW_DOWNLOAD_TIMEOUT", "300")))
 
 _QDRANT_CLIENT = None
 _QDRANT_DISABLED = False
@@ -292,7 +299,10 @@ def embedding_task(job_id: str) -> None:
         try:
             if not os.path.exists(local_path):
                 raise FileNotFoundError(f"Stored preview not found for asset {asset.get('id')}")
-            audio, _ = load_audio_mono(local_path, sample_rate=EMBEDDING_SAMPLE_RATE)
+            audio, meta = extract_core_segment(
+                local_path, target_duration=30, sr=EMBEDDING_SAMPLE_RATE
+            )
+            logger.info("Core: %.1fs-%.1fs", meta["start_sec"], meta["end_sec"])
             if audio is None or not len(audio):
                 raise ValueError("Audio buffer empty for embedding generation")
         finally:
@@ -383,53 +393,62 @@ def position_task(job_id: str) -> None:
         track = _fetch_track(conn, track_id)
         if not track:
             raise ValueError(f"Track {track_id} not found")
-
-        features = {
-            "energy": track.get("energy") or 0.5,
-            "danceability": track.get("danceability") or 0.5,
-            "acousticness": track.get("acousticness") or 0.5,
-            "brightness": track.get("brightness") or 0.5,
-            "bass": track.get("bass") or 0.5,
-            "valence": track.get("valence") or 0.5,
-        }
-        position, color, size, emissive = derive_position(features)
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE tracks
-                SET position_x = %s,
-                    position_y = %s,
-                    position_z = %s,
-                    color_r = %s,
-                    color_g = %s,
-                    color_b = %s,
-                    sphere_size = %s,
-                    emissive_intensity = %s,
-                    updated_at = NOW()
-                WHERE id = %s
-                """,
-                (
-                    float(position[0]),
-                    float(position[1]),
-                    float(position[2]),
-                    float(color[0]),
-                    float(color[1]),
-                    float(color[2]),
-                    float(size),
-                    float(emissive),
-                    track_id,
-                ),
+        try:
+            result = run_position_job(str(track_id))
+        except Exception as exc:
+            logger.warning("UMAP positioning failed for track %s: %s", track_id, exc)
+            result = None
+        if result is None:
+            features = {
+                "energy": track.get("energy") or 0.5,
+                "danceability": track.get("danceability") or 0.5,
+                "acousticness": track.get("acousticness") or 0.5,
+                "brightness": track.get("brightness") or 0.5,
+                "bass": track.get("bass") or 0.5,
+                "valence": track.get("valence") or 0.5,
+            }
+            position, color, size, emissive = derive_position(features)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tracks
+                    SET position_x = %s,
+                        position_y = %s,
+                        position_z = %s,
+                        position_method = 'pending',
+                        color_r = %s,
+                        color_g = %s,
+                        color_b = %s,
+                        sphere_size = %s,
+                        emissive_intensity = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (
+                        float(position[0]),
+                        float(position[1]),
+                        float(position[2]),
+                        float(color[0]),
+                        float(color[1]),
+                        float(color[2]),
+                        float(size),
+                        float(emissive),
+                        track_id,
+                    ),
+                )
+            conn.commit()
+            _mark_job_succeeded(
+                conn,
+                job_id,
+                {
+                    "position": {"x": float(position[0]), "y": float(position[1]), "z": float(position[2])},
+                    "color": {"r": float(color[0]), "g": float(color[1]), "b": float(color[2])},
+                    "sphere_size": float(size),
+                    "position_method": "pending",
+                },
             )
-        conn.commit()
-        _mark_job_succeeded(
-            conn,
-            job_id,
-            {
-                "position": {"x": float(position[0]), "y": float(position[1]), "z": float(position[2])},
-                "color": {"r": float(color[0]), "g": float(color[1]), "b": float(color[2])},
-                "sphere_size": float(size),
-            },
-        )
+        else:
+            _mark_job_succeeded(conn, job_id, {"position": result})
     except Exception as exc:  # pragma: no cover
         conn.rollback()
         _mark_job_failed(conn, job_id, str(exc))
@@ -461,7 +480,8 @@ def _materialize_storage_path(storage_path: str) -> tuple[str, Optional[Callable
         client = gcs_storage.Client.from_service_account_json(str(resolved))
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-        blob.download_to_filename(tmp_file.name)
+        logger.info("Downloading preview from GCS bucket=%s blob=%s", bucket_name, blob_name)
+        blob.download_to_filename(tmp_file.name, timeout=GCS_DOWNLOAD_TIMEOUT)
 
         def _cleanup() -> None:
             try:

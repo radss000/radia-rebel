@@ -146,7 +146,7 @@ def infer_provider_type(url_value: Optional[str], explicit: Optional[str]) -> st
         return 'discogs'
     if 'spotify' in hostname:
         return 'spotify'
-    if 'youtube' in hostname or 'ytimg' in hostname:
+    if 'youtube' in hostname or 'ytimg' in hostname or hostname == 'youtu.be':
         return 'youtube_music'
     return 'other'
 
@@ -480,6 +480,40 @@ def ingest_track(payload: TrackIngestRequest):
     """Ingest a user uploaded track from the Node API into Postgres with real audio features"""
     temp_file = None
     try:
+        source_url = str(payload.preview_source_url or payload.audio_url)
+        provider_type = infer_provider_type(source_url, payload.preview_provider_type)
+        provider_track_id = derive_provider_track_id(payload, source_url)
+        if provider_type == "youtube_music":
+            conn = get_db_connection()
+            try:
+                upsert_result = _ensure_track_and_asset(
+                    conn,
+                    artist=payload.artist,
+                    title=payload.title,
+                    provider_type=provider_type,
+                    provider_track_id=provider_track_id,
+                    source_url=source_url,
+                    duration_seconds=payload.duration_seconds,
+                )
+                conn.commit()
+            except HTTPException:
+                conn.rollback()
+                raise
+            except Exception as exc:
+                conn.rollback()
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+            finally:
+                conn.close()
+
+            return {
+                "track_id": upsert_result["track_id"],
+                "audio_asset_id": upsert_result["audio_asset_id"],
+                "provider_type": provider_type,
+                "provider_track_id": provider_track_id,
+                "preview_source_url": source_url,
+                "note": "YouTube previews are fetched asynchronously; enqueue analysis jobs next.",
+            }
+
         response = requests.get(payload.audio_url, stream=True, timeout=30)
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Failed to download audio (status {response.status_code})")

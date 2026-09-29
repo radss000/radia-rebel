@@ -1,3 +1,40 @@
+## 2026-08-08 · Phase UI/3D V1 — Sonic Universe React/WebGL
+
+- Remplacement de l'iframe Babylon/CDN par un composant React avec renderer WebGL natif, utilisable sans connexion réseau après chargement des données.
+- Ajout de l'orbit, du zoom, du picking, de la recherche, des filtres de provenance et d'un fallback accessible lorsque WebGL est indisponible.
+- Affichage de la version publiée, de la trustworthiness, du rappel des voisins et des méthodes `clap_umap_full`, `clap_knn_approx` et `features_fallback`.
+- Connexions et pourcentages de proximité alimentés uniquement par l'endpoint de similarité CLAP exact ; la distance 3D reste explicitement exploratoire.
+- Passage des données Sonic Map par le proxy Node same-origin avec limite bornée à 5 000 pistes, et gestion robuste des erreurs HTTP frontend.
+- Validation locale : 6 tests frontend réussis, build React production réussi et 29 tests Python de régression réussis.
+
+## 2026-08-08 · Phase 3 V1 — positionnement 3D versionné et quality-gated
+
+- Correction du KNN incrémental : exclusion de la track cible, des positions invalides, des similarités négatives et des voisins incompatibles.
+- Remplacement des méthodes ambiguës par `clap_umap_full`, `clap_knn_approx` et `features_fallback`, avec provenance et qualité par track.
+- Ajout d'un alignement Procrustes sur les ancres de la carte publiée afin de limiter rotations, miroirs et déplacements entre recalculs.
+- Mesure automatique de la trustworthiness et du rappel des voisins CLAP ; les cartes sous les seuils configurés sont enregistrées comme rejetées et non publiées.
+- Benchmark structuré à 1 000 embeddings : trustworthiness `0,987`, rappel topologique `0,456` en 17 s ; seuil de rappel provisoire fixé à `0,35` en attendant la calibration du corpus réel.
+- Publication atomique via table de staging, verrou transactionnel et version publiée unique, avec migration idempotente pour les bases existantes.
+- Ajout de `GET /api/sonic-map/version`, de son proxy Node et du service frontend associé.
+- Tests ajoutés pour quality gate, KNN, déduplication Qdrant, alignement, commit/rollback atomique et contrat API de provenance.
+
+## 2026-08-08 · Phase 2 V1 — API de similarité CLAP
+
+- Ajout de `GET /api/tracks/{track_id}/similar` avec pagination bornée, score cosinus minimal et erreurs explicites pour tracks ou embeddings absents.
+- Recherche Qdrant directe dans l'espace CLAP, exclusion de la track cible, déduplication et filtrage strict par modèle, version et dimensions.
+- Jointure PostgreSQL groupée des métadonnées, retour du rang, score, provenance du modèle, position secondaire et méthode de positionnement.
+- Ajout du proxy Node et du service frontend `getSimilarTracks`, ainsi que des métadonnées modèle dans les nouveaux payloads Qdrant.
+- Les bandes de similarité restent non calibrées par défaut et ne sont activées que par configuration versionnée.
+- Validation locale : 17 tests Python réussis, contrat HTTP testé, syntaxe Node valide et build React de production réussi.
+
+## 2026-08-03 · Phase 1 V1 — runtime audio/UMAP stabilisé
+
+- Suppression des désactivations globales de Numba JIT dans le worker, les tâches et les modules audio afin de restaurer les performances UMAP.
+- Ajout d'une configuration explicite d'un cache Numba writable dans le répertoire temporaire système, avec `NUMBA_CACHE_DIR` optionnel.
+- Réduction de la mémoire des fixtures audio longues tout en conservant les mêmes durées et branches fonctionnelles testées.
+- Harmonisation de `CLAP_AMODEL=HTSAT-base` et ajout des métadonnées modèle dans la configuration pipeline d'exemple.
+- Validation locale : 10 tests passent dans un même processus en 49 s ; projection UMAP de 5 000 embeddings en 49 s.
+
 ## 2026-03-01 · CLAP checkpoint switch (Task-01) + pipeline smoke test
 
 - Switched CLAP to the music-specific checkpoint and enforced `CLAP_CHECKPOINT_PATH` at load time (error if missing).

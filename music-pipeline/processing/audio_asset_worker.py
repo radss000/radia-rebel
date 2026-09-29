@@ -13,6 +13,9 @@ import argparse
 import logging
 import os
 import time
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 import psycopg2
 
@@ -27,6 +30,17 @@ from processing.audio_assets.service import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("audio_asset_worker")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]
+pipeline_env = PIPELINE_ROOT / ".env"
+repo_env = PROJECT_ROOT / ".env"
+if pipeline_env.exists():
+    load_dotenv(dotenv_path=pipeline_env, override=False)
+if repo_env.exists():
+    load_dotenv(dotenv_path=repo_env, override=False)
+if not pipeline_env.exists() and not repo_env.exists():
+    load_dotenv(override=False)
 
 POLL_INTERVAL = int(os.getenv("AUDIO_ASSET_POLL_INTERVAL", 30))
 
