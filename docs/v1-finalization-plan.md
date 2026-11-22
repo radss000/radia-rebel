@@ -76,6 +76,18 @@ La V1 est considérée accurate lorsque :
 - [ ] Réécrire les tests `test_phase6_*`, exclus par défaut (marqueur `phase6_legacy`), contre les vraies API (phase 6).
 - Point de vigilance : à 5 000 embeddings synthétiques, le rappel des voisins tombe à 0,37, juste au-dessus du seuil provisoire de 0,35. La calibration de la phase 4 est prioritaire.
 
+### État au 22 novembre 2026 : parcours de bout en bout réel (branche `phase2-e2e-ci`)
+
+- [x] Test E2E sans mock (`music-pipeline/tests/e2e`) : 12 morceaux générés et servis en local, ingestion → preview → features → CLAP/Qdrant → position → `/similar` → `/sonic-map` → `/version`. Il passe sur une stack vierge, en local et dans GitHub Actions (`music-pipeline.yml`, avec le vrai checkpoint CLAP).
+- [x] Workers séparés : `analysis` (CLAP) et `positioning` (UMAP), chaînés par RQ `depends_on` ; un échec marque les étapes suivantes comme échouées.
+- [x] Bugs corrigés grâce au parcours réel :
+  - ingestion par URL directe (`other`) sans adaptateur : `preview_fetch` échouait toujours ;
+  - `ON CONFLICT (track_id)` sur `embeddings` sans index unique sur une base neuve (migration `20261122_embeddings_track_unique.sql`) ;
+  - blocage du worker de positionnement sur lui-même (transaction de lecture ouverte plus `ALTER TABLE`) au premier job après chaque démarrage ;
+  - `docker-compose.yml` fixé à Qdrant 1.7.4, incompatible avec `query_points` : passage à 1.12.6.
+- [x] Option `AUDIO_FEATURES_SOURCE=core` (environ 4,5 fois plus rapide, désactivée par défaut).
+- Constat : avec le seuil de production (trustworthiness ≥ 0,90), une carte de 12 morceaux est toujours rejetée et tous les morceaux restent en `features_fallback`. Un petit catalogue n'aura donc jamais de carte CLAP tant que la calibration (phase 4) n'est pas faite.
+
 ## Phase 2 — Finaliser l'API de similarité
 
 ### Contrat proposé

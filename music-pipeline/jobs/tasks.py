@@ -126,6 +126,49 @@ def _mark_job_failed(conn, job_id: str, message: str) -> None:
             (message[:500], now, now, job_id),
         )
     conn.commit()
+    _fail_dependents(conn, job_id, message)
+
+
+def _fail_dependents(conn, job_id: str, message: str) -> None:
+    """Mark jobs waiting on ``job_id`` (RQ ``depends_on``) as failed.
+
+    RQ leaves dependents of a failed job deferred forever; without this the UI
+    would poll ``queued`` jobs that can never start.
+    """
+    try:
+        from rq.job import Job
+        from rq import get_current_job
+
+        current = get_current_job()
+        if current is None or current.id != str(job_id):
+            return
+        pending = list(current.dependent_ids)
+        seen = set()
+        reason = f"Upstream job {job_id} failed: {message}"[:500]
+        now = datetime.now(timezone.utc)
+        while pending:
+            dep_id = pending.pop()
+            if dep_id in seen:
+                continue
+            seen.add(dep_id)
+            try:
+                dep_job = Job.fetch(dep_id, connection=current.connection)
+                pending.extend(dep_job.dependent_ids)
+                dep_job.cancel()
+            except Exception:  # pragma: no cover - job already gone
+                pass
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE analysis_jobs
+                    SET status = 'failed', error_message = %s, updated_at = %s, completed_at = %s
+                    WHERE id = %s AND status IN ('queued', 'pending')
+                    """,
+                    (reason, now, now, dep_id),
+                )
+        conn.commit()
+    except Exception as exc:  # pragma: no cover - never mask the original failure
+        logger.warning("Could not fail dependents of job %s: %s", job_id, exc)
 
 
 def _fetch_asset(conn, asset_id: str) -> Optional[Dict[str, Any]]:
@@ -397,6 +440,10 @@ def position_task(job_id: str) -> None:
             raise ValueError("Position job requires a track_id")
         logger.info("position_task: starting for track %s", track_id)
         track = _fetch_track(conn, track_id)
+        # End the read transaction before positioning: run_position_job uses its own
+        # connections (schema migration, publication) that need locks on `tracks`.
+        # Keeping this one "idle in transaction" made the worker wait on itself forever.
+        conn.commit()
         if not track:
             raise ValueError(f"Track {track_id} not found")
         logger.info("position_task: calling run_position_job for track %s", track_id)

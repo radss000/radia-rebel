@@ -106,6 +106,9 @@ def determine_jobs(row: dict, requested_steps: Iterable[str]) -> List[str]:
 
 
 def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry_run: bool, conn) -> None:
+    # Chain the steps of one track: ``position`` runs in a separate queue/worker,
+    # so each step must wait for the previous one (RQ depends_on).
+    previous_queue_job_id = None
     for job_type in job_types:
         track_id = row.get("track_id")
         audio_asset_id = row.get("audio_asset_id")
@@ -127,7 +130,8 @@ def enqueue_row_jobs(row: dict, job_types: Iterable[str], requested_by: str, dry
             logger.info("[dry-run] Would enqueue %s for track=%s asset=%s", job_type, track_id, audio_asset_id)
             continue
 
-        job_row, _ = enqueue_analysis_job(
+        job_row, previous_queue_job_id = enqueue_analysis_job(
+            depends_on=previous_queue_job_id,
             job_type=job_type,
             track_id=track_id if job_type in {"audio_features", "embedding", "position"} else None,
             audio_asset_id=str(audio_asset_id) if audio_asset_id and asset_required else None,

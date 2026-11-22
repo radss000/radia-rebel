@@ -8,15 +8,32 @@ from typing import Any, Dict, Optional, Tuple
 from psycopg2.extras import Json, RealDictCursor
 from redis import Redis
 from rq import Queue
+from rq.job import Dependency
 
 from database.utils import get_db_connection
 from jobs.tasks import JOB_TASK_MAP
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 ANALYSIS_QUEUE_NAME = os.getenv("ANALYSIS_QUEUE_NAME", "analysis")
+# Positioning (UMAP/scikit-learn, LLVM OpenMP) runs in its own worker so it never
+# shares a process with torch/CLAP (Intel OpenMP). Set POSITION_QUEUE_NAME to the
+# analysis queue name to keep the legacy single-worker setup.
+POSITION_QUEUE_NAME = os.getenv("POSITION_QUEUE_NAME", "positioning")
 
 redis_connection = Redis.from_url(REDIS_URL)
 analysis_queue = Queue(ANALYSIS_QUEUE_NAME, connection=redis_connection)
+_queues: Dict[str, Queue] = {ANALYSIS_QUEUE_NAME: analysis_queue}
+
+
+def queue_name_for(job_type: str) -> str:
+    return POSITION_QUEUE_NAME if job_type == "position" else ANALYSIS_QUEUE_NAME
+
+
+def get_queue(job_type: str) -> Queue:
+    name = queue_name_for(job_type)
+    if name not in _queues:
+        _queues[name] = Queue(name, connection=redis_connection)
+    return _queues[name]
 
 DEFAULT_JOB_TIMEOUT = int(os.getenv("JOB_TIMEOUT_DEFAULT", "300"))
 EMBEDDING_JOB_TIMEOUT = int(os.getenv("EMBEDDING_JOB_TIMEOUT", "1200"))
@@ -56,8 +73,16 @@ def enqueue_analysis_job(
     priority: int = 0,
     requested_by: Optional[str] = None,
     job_timeout: Optional[int] = None,
+    depends_on: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
-    """Insert an analysis_job row then push it to the RQ queue."""
+    """Insert an analysis_job row then push it to the RQ queue.
+
+    ``depends_on`` is the id of a previously enqueued job: this job only starts
+    once that one succeeded. Required as soon as jobs of one pipeline land in
+    different queues (analysis vs positioning), otherwise ``position`` could run
+    before ``embedding`` finished. If the dependency fails, the worker marks this
+    job as failed too (see ``jobs.tasks._fail_dependents``).
+    """
     task_path = JOB_TASK_MAP.get(job_type)
     if not task_path:
         raise ValueError(f"Unsupported job_type '{job_type}'")
@@ -112,11 +137,12 @@ def enqueue_analysis_job(
     timeout_value = job_timeout or JOB_TIMEOUTS.get(job_type, DEFAULT_JOB_TIMEOUT)
 
     try:
-        rq_job = analysis_queue.enqueue(
+        rq_job = get_queue(job_type).enqueue(
             task_path,
             str(job_row["id"]),
             job_id=str(job_row["id"]),
             job_timeout=timeout_value,
+            depends_on=Dependency(jobs=[depends_on]) if depends_on else None,
         )
     except Exception as exc:
         conn = get_db_connection()
@@ -132,4 +158,4 @@ def enqueue_analysis_job(
     return job_row, rq_job.id
 
 
-__all__ = ["analysis_queue", "enqueue_analysis_job", "serialize_job"]
+__all__ = ["analysis_queue", "enqueue_analysis_job", "get_queue", "queue_name_for", "serialize_job"]

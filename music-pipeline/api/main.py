@@ -827,6 +827,7 @@ def search_and_ingest_track(payload: TrackSearchIngestRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Invalid audio asset id: {exc}") from exc
 
+    previous_job_id = None
     for job_type in ("preview_fetch", "audio_features", "embedding", "position"):
         payload_kwargs = {
             "job_type": job_type,
@@ -839,7 +840,8 @@ def search_and_ingest_track(payload: TrackSearchIngestRequest):
         if job_type in {"audio_features", "embedding", "position"}:
             payload_kwargs["track_id"] = upsert_result["track_id"]
         job_request = JobEnqueueRequest(**payload_kwargs)
-        enqueue_result = enqueue_job(job_request)
+        enqueue_result = enqueue_job(job_request, depends_on=previous_job_id)
+        previous_job_id = enqueue_result["queue_job_id"]
         jobs.append(
             {
                 "type": job_type,
@@ -860,7 +862,8 @@ def search_and_ingest_track(payload: TrackSearchIngestRequest):
 
 
 @app.post("/api/jobs/enqueue")
-def enqueue_job(payload: JobEnqueueRequest):
+def enqueue_job(payload: JobEnqueueRequest, depends_on: Optional[str] = None):
+    """Enqueue one analysis step; ``depends_on`` (query param) chains it after another job."""
     try:
         job_row, queue_job_id = enqueue_analysis_job(
             job_type=payload.job_type,
@@ -871,6 +874,7 @@ def enqueue_job(payload: JobEnqueueRequest):
             payload=payload.payload,
             priority=payload.priority,
             requested_by=payload.requested_by,
+            depends_on=depends_on,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
