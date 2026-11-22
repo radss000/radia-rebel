@@ -11,5 +11,7 @@ test-ledger/
 *.log
 .DS_Store
 devnet-keypair.json
+scripts/e2e-sample.wav
+.tools/
 
 !data/.gitkeep

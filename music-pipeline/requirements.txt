@@ -15,8 +15,9 @@ scikit-learn>=1.4.2
 torch==2.2.2
 torchaudio==2.2.2
 torchvision==0.17.2
+transformers>=4.40.0,<4.46.0
 laion-clap==1.1.4
 python-dotenv==1.0.1
-yt-dlp==2024.11.4
+yt-dlp>=2026.8.19
 umap-learn>=0.5.5
 pytest>=8.2.0

@@ -30,12 +30,17 @@ export async function apiRequest(endpoint, options = {}) {
   // Make request
   const response = await fetch(url, requestOptions);
   
-  // Parse JSON response
-  const data = await response.json();
+  const isJson = response.headers.get('content-type')?.includes('application/json');
+  const data = isJson
+    ? await response.json()
+    : { message: await response.text() };
   
   // Check if request was successful
   if (!response.ok) {
-    throw new Error(data.message || 'Something went wrong');
+    const error = new Error(data.detail || data.message || 'Something went wrong');
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
   
   return data;

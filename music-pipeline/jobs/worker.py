@@ -12,7 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from redis import Redis
-from rq import Queue, Worker
+from rq import Queue, SimpleWorker
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QUEUE_NAME = os.getenv("ANALYSIS_QUEUE_NAME", "analysis")
 
@@ -44,7 +44,7 @@ def main() -> None:
 
     redis_conn = Redis.from_url(REDIS_URL)
     queue = Queue(QUEUE_NAME, connection=redis_conn)
-    worker = Worker([queue], connection=redis_conn)
+    worker = SimpleWorker([queue], connection=redis_conn)
     worker.work()
 
 

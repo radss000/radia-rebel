@@ -358,7 +358,12 @@ def embedding_task(job_id: str) -> None:
                         qmodels.PointStruct(
                             id=qdrant_id,
                             vector=embedding.tolist(),
-                            payload={"track_id": track_id},
+                            payload={
+                                "track_id": track_id,
+                                "model_name": CLAP_MODEL_NAME,
+                                "model_version": CLAP_MODEL_VERSION,
+                                "vector_dimensions": vector_dimensions,
+                            },
                         )
                     ],
                 )
@@ -390,14 +395,19 @@ def position_task(job_id: str) -> None:
         track_id = job.get("track_id")
         if not track_id:
             raise ValueError("Position job requires a track_id")
+        logger.info("position_task: starting for track %s", track_id)
         track = _fetch_track(conn, track_id)
         if not track:
             raise ValueError(f"Track {track_id} not found")
+        logger.info("position_task: calling run_position_job for track %s", track_id)
         try:
             result = run_position_job(str(track_id))
         except Exception as exc:
             logger.warning("UMAP positioning failed for track %s: %s", track_id, exc)
+            import traceback
+            logger.warning("UMAP traceback: %s", traceback.format_exc())
             result = None
+        logger.info("position_task: run_position_job returned %s for track %s", "result" if result else "None", track_id)
         if result is None:
             features = {
                 "energy": track.get("energy") or 0.5,
@@ -415,7 +425,10 @@ def position_task(job_id: str) -> None:
                     SET position_x = %s,
                         position_y = %s,
                         position_z = %s,
-                        position_method = 'pending',
+                        position_method = 'features_fallback',
+                        position_version_id = NULL,
+                        positioned_at = NOW(),
+                        position_quality = %s,
                         color_r = %s,
                         color_g = %s,
                         color_b = %s,
@@ -428,6 +441,7 @@ def position_task(job_id: str) -> None:
                         float(position[0]),
                         float(position[1]),
                         float(position[2]),
+                        Json({"source": "audio_features", "reason": "clap_position_unavailable"}),
                         float(color[0]),
                         float(color[1]),
                         float(color[2]),
@@ -444,7 +458,11 @@ def position_task(job_id: str) -> None:
                     "position": {"x": float(position[0]), "y": float(position[1]), "z": float(position[2])},
                     "color": {"r": float(color[0]), "g": float(color[1]), "b": float(color[2])},
                     "sphere_size": float(size),
-                    "position_method": "pending",
+                    "position_method": "features_fallback",
+                    "position_quality": {
+                        "source": "audio_features",
+                        "reason": "clap_position_unavailable",
+                    },
                 },
             )
         else:

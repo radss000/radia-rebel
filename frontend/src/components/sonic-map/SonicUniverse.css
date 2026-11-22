@@ -1,0 +1,143 @@
+.sonic-universe {
+  position: relative;
+  min-height: 720px;
+  height: min(78vh, 900px);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(70, 90, 255, 0.18), transparent 34%),
+    radial-gradient(circle at 78% 82%, rgba(0, 240, 214, 0.12), transparent 38%),
+    #030713;
+  box-shadow: 0 36px 100px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 255, 255, 0.04);
+  isolation: isolate;
+}
+
+.sonic-universe__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.sonic-universe__canvas:active { cursor: grabbing; }
+.sonic-universe__canvas:focus-visible { box-shadow: inset 0 0 0 2px rgba(103, 232, 249, 0.8); }
+
+.sonic-universe__aurora {
+  position: absolute;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background: conic-gradient(from 180deg, transparent, rgba(91, 108, 255, 0.09), transparent, rgba(38, 225, 194, 0.07), transparent);
+  filter: blur(70px);
+  animation: sonic-aurora 24s linear infinite;
+}
+
+.sonic-universe__topbar,
+.sonic-universe__filters,
+.sonic-universe__quality,
+.sonic-universe__inspector,
+.sonic-universe__guide,
+.sonic-universe__controls {
+  position: absolute;
+  z-index: 3;
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  background: rgba(7, 12, 28, 0.66);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+.sonic-universe__topbar {
+  top: 18px;
+  left: 18px;
+  right: 18px;
+  display: grid;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(260px, 1fr) 42px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 16px;
+}
+
+.sonic-universe__brand { display: flex; align-items: center; gap: 10px; color: white; }
+.sonic-universe__brand-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; color: #dbeafe; background: linear-gradient(135deg, #5666ff, #22d3b6); box-shadow: 0 0 24px rgba(86, 102, 255, 0.35); }
+.sonic-universe__brand strong { display: block; font-size: 13px; letter-spacing: 0.03em; }
+.sonic-universe__brand span { display: block; margin-top: 2px; font-size: 10px; color: #8994ad; }
+
+.sonic-universe__search { position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 11px; background: rgba(255, 255, 255, 0.055); color: #7dd3fc; }
+.sonic-universe__search input { width: 100%; border: 0; outline: 0; background: transparent; color: #f8fafc; font-size: 12px; }
+.sonic-universe__search input::placeholder { color: #667085; }
+.sonic-universe__search-results { position: absolute; top: calc(100% + 10px); left: 0; right: 0; padding: 7px; border-radius: 13px; background: rgba(5, 9, 23, 0.96); border: 1px solid rgba(148, 163, 184, 0.18); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
+.sonic-universe__search-results button { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; color: white; text-align: left; cursor: pointer; }
+.sonic-universe__search-results button:hover { background: rgba(99, 102, 241, 0.14); }
+.sonic-universe__search-results strong { font-size: 11px; }
+.sonic-universe__search-results span { color: #7c879f; font-size: 10px; }
+
+.sonic-universe__icon-button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 10px; color: #a5b4fc; background: rgba(99, 102, 241, 0.12); cursor: pointer; }
+
+.sonic-universe__filters { top: 92px; left: 18px; display: flex; align-items: center; gap: 5px; padding: 7px; border-radius: 13px; color: #6ee7d8; }
+.sonic-universe__filters button { border: 0; padding: 7px 9px; border-radius: 8px; color: #8190aa; background: transparent; font-size: 10px; cursor: pointer; }
+.sonic-universe__filters button.active { color: white; background: linear-gradient(135deg, rgba(91, 108, 255, 0.72), rgba(34, 211, 182, 0.42)); box-shadow: 0 8px 22px rgba(31, 41, 105, 0.35); }
+
+.sonic-universe__quality { top: 92px; right: 18px; display: flex; gap: 12px; padding: 10px 12px; border-radius: 12px; color: #99a6bf; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; }
+.sonic-universe__quality span:first-child { color: #c7d2fe; }
+
+.sonic-universe__inspector { top: 145px; right: 18px; width: min(330px, calc(100% - 36px)); max-height: calc(100% - 210px); overflow: auto; padding: 18px; border-radius: 18px; color: white; }
+.sonic-universe__inspector-kicker { display: flex; align-items: center; gap: 6px; color: #67e8f9; font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; }
+.sonic-universe__inspector h3 { margin: 12px 0 3px; font-size: 20px; line-height: 1.15; }
+.sonic-universe__artist { margin: 0 0 12px; color: #99a6bf; font-size: 12px; }
+.sonic-universe__method { display: inline-flex; padding: 5px 8px; border-radius: 999px; font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; }
+.sonic-universe__method--full { color: #c7d2fe; background: rgba(99, 102, 241, 0.17); }
+.sonic-universe__method--approx { color: #99f6e4; background: rgba(20, 184, 166, 0.16); }
+.sonic-universe__method--fallback { color: #fed7aa; background: rgba(249, 115, 22, 0.16); }
+.sonic-universe__method--other { color: #cbd5e1; background: rgba(148, 163, 184, 0.12); }
+.sonic-universe__meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 15px 0; }
+.sonic-universe__meta-grid span { padding: 9px; border-radius: 10px; color: #68758e; background: rgba(255, 255, 255, 0.035); font-size: 9px; text-transform: uppercase; }
+.sonic-universe__meta-grid strong { display: block; margin-top: 4px; color: #dce4f5; font-size: 10px; text-transform: none; overflow: hidden; text-overflow: ellipsis; }
+.sonic-universe__neighbors-title { display: flex; justify-content: space-between; align-items: center; padding-top: 13px; border-top: 1px solid rgba(148, 163, 184, 0.12); color: #a5b4fc; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+.sonic-universe__neighbors { display: grid; gap: 5px; margin-top: 8px; }
+.sonic-universe__neighbors button { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 10px; color: white; background: rgba(255, 255, 255, 0.035); cursor: pointer; text-align: left; }
+.sonic-universe__neighbors button:hover { border-color: rgba(103, 232, 249, 0.25); background: rgba(34, 211, 238, 0.07); }
+.sonic-universe__neighbors strong, .sonic-universe__neighbors small { display: block; max-width: 185px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sonic-universe__neighbors strong { font-size: 10px; }
+.sonic-universe__neighbors small { margin-top: 2px; color: #748198; font-size: 9px; }
+.sonic-universe__neighbors em { color: #67e8f9; font-size: 10px; font-style: normal; }
+.sonic-universe__muted { color: #748198; font-size: 10px; }
+
+.sonic-universe__guide { top: 145px; left: 18px; width: min(300px, calc(100% - 36px)); padding: 18px; border-radius: 18px; color: #cbd5e1; font-size: 11px; line-height: 1.55; }
+.sonic-universe__guide > button { position: absolute; top: 8px; right: 10px; border: 0; color: #94a3b8; background: transparent; font-size: 20px; cursor: pointer; }
+.sonic-universe__guide h4 { margin: 0 0 8px; color: white; font-size: 15px; }
+.sonic-universe__guide ul { display: grid; gap: 6px; padding: 0; list-style: none; }
+.sonic-universe__guide li { display: flex; align-items: center; gap: 8px; }
+.sonic-universe__guide i { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+.legend-full { color: #8b9cff; background: currentColor; }
+.legend-approx { color: #2dd4bf; background: currentColor; }
+.legend-fallback { color: #fb923c; background: currentColor; }
+
+.sonic-universe__controls { left: 18px; bottom: 18px; display: flex; gap: 14px; padding: 9px 12px; border-radius: 11px; color: #738099; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
+.sonic-universe__controls span { display: flex; align-items: center; gap: 5px; }
+
+.sonic-universe__status { position: absolute; inset: 0; z-index: 5; display: grid; place-content: center; justify-items: center; gap: 8px; color: #dbeafe; background: rgba(3, 7, 18, 0.74); backdrop-filter: blur(10px); }
+.sonic-universe__status span { max-width: 360px; color: #94a3b8; font-size: 11px; text-align: center; }
+.sonic-universe__fallback-list { position: absolute; inset: 100px 20px 20px; z-index: 6; overflow: auto; display: grid; align-content: start; gap: 5px; }
+.sonic-universe__fallback-list button { padding: 10px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 9px; color: white; background: rgba(15, 23, 42, 0.9); text-align: left; }
+
+@keyframes sonic-aurora { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .sonic-universe { min-height: 680px; height: 78vh; border-radius: 18px; }
+  .sonic-universe__topbar { grid-template-columns: 1fr 40px; }
+  .sonic-universe__brand { display: none; }
+  .sonic-universe__filters { right: 18px; overflow-x: auto; }
+  .sonic-universe__quality { top: auto; right: auto; left: 18px; bottom: 56px; }
+  .sonic-universe__inspector { top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; max-height: 42%; }
+  .sonic-universe__controls { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sonic-universe__aurora { animation: none; }
+}

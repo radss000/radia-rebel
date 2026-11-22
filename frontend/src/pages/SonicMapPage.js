@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   RefreshCcw,
@@ -15,12 +15,12 @@ import {
   fetchPipelineSonicMap,
   getAnalysisJob,
   getPipelineTrackDetail,
+  getSonicMapVersion,
   ingestPipelineTrack,
   searchAndIngestTrack,
   searchPipelineTracks
 } from '../services/pipeline';
-
-const MAP_URL = 'http://localhost:5001/sonic-map/index-new.html';
+import SonicUniverse from '../components/sonic-map/SonicUniverse';
 
 const statusColors = {
   idle: 'bg-costar-gray-dark text-costar-text-muted',
@@ -81,7 +81,6 @@ const createInitialJobState = () =>
   }, {});
 
 const SonicMapPage = () => {
-  const [iframeKey, setIframeKey] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -93,6 +92,8 @@ const SonicMapPage = () => {
   const [jobState, setJobState] = useState(() => createInitialJobState());
   const [isProcessing, setIsProcessing] = useState(false);
   const [mapRefreshing, setMapRefreshing] = useState(false);
+  const [mapTracks, setMapTracks] = useState([]);
+  const [mapVersion, setMapVersion] = useState(null);
   const [mapTrackCount, setMapTrackCount] = useState(null);
   const [lastMapRefresh, setLastMapRefresh] = useState(null);
   const [lastJobContext, setLastJobContext] = useState(null);
@@ -303,17 +304,25 @@ const SonicMapPage = () => {
   const refreshMapData = useCallback(async () => {
     setMapRefreshing(true);
     try {
-      const tracks = await fetchPipelineSonicMap(600);
+      const [tracks, version] = await Promise.all([
+        fetchPipelineSonicMap(5000),
+        getSonicMapVersion().catch(() => null)
+      ]);
       const count = Array.isArray(tracks) ? tracks.length : tracks?.length ?? null;
+      setMapTracks(Array.isArray(tracks) ? tracks : []);
+      setMapVersion(version);
       setMapTrackCount(count);
       setLastMapRefresh(new Date());
-      setIframeKey((prev) => prev + 1); // reload iframe to pull fresh data
     } catch (error) {
       setAnalysisError((prev) => prev || error.message || 'Failed to refresh sonic map');
     } finally {
       setMapRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    refreshMapData();
+  }, [refreshMapData]);
 
   const buildIngestPayload = (detail) => {
     const url = previewUrl?.trim();
@@ -897,21 +906,13 @@ const SonicMapPage = () => {
         </div>
       </div>
 
-      <div className="relative rounded-xl overflow-hidden shadow-lg border border-white/10">
-        <iframe
-          key={iframeKey}
-          src={MAP_URL}
-          title="Sonic Map"
-          className="w-full h-[70vh]"
-          allowFullScreen
-        />
-        {mapRefreshing && (
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center text-white text-sm gap-2">
-            <Loader2 size={18} className="animate-spin" />
-            Refreshing sonic map…
-          </div>
-        )}
-      </div>
+      <SonicUniverse
+        tracks={mapTracks}
+        version={mapVersion}
+        selectedTrackId={selectedTrackId}
+        onSelectTrack={handleSelectTrack}
+        loading={mapRefreshing}
+      />
     </div>
   );
 };

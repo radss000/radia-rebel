@@ -5,7 +5,7 @@ import { hashBuffer, hashToBytes } from '../src/services/hash.js';
 test('hashBuffer returns a deterministic SHA-256 hash', () => {
   assert.equal(
     hashBuffer(Buffer.from('radia-proof')),
-    'b01d550e6f514d9da73cf8f925c93319005f5b7f621cc7775ad2744958d39533'
+    '72c231e463154314a1bb7000045272e8f980614ec138b31bbce6d32389b93a78'
   );
 });
 

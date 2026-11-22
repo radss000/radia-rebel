@@ -59,6 +59,80 @@ def test_nearest_neighbor_consistency():
     assert dist < 20.0, f"Approx position too far: dist={dist:.1f}"
 
 
+def test_nearest_neighbor_filters_invalid_and_negative_candidates():
+    positioner = UMAPPositioner()
+    new_embedding = np.array([1.0, 0.0], dtype=np.float32)
+    existing_embeddings = np.array(
+        [
+            [1.0, 0.0],
+            [0.8, 0.2],
+            [-1.0, 0.0],
+            [1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    existing_positions = np.array(
+        [
+            [10.0, 0.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [-100.0, 0.0, 0.0],
+            [np.nan, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    result = positioner.nearest_neighbor_position_with_details(
+        new_embedding,
+        existing_embeddings,
+        existing_positions,
+        k=3,
+        min_similarity=0.1,
+        min_neighbors=2,
+    )
+
+    assert result.neighbor_indices.tolist() == [0, 1]
+    assert np.all(result.similarities > 0)
+    assert 10.0 <= result.position[0] <= 20.0
+
+
+def test_nearest_neighbor_rejects_insufficient_neighbors():
+    positioner = UMAPPositioner()
+
+    with np.testing.assert_raises_regex(ValueError, "Not enough valid neighbors"):
+        positioner.nearest_neighbor_position(
+            np.array([1.0, 0.0]),
+            np.array([[1.0, 0.0], [-1.0, 0.0]]),
+            np.array([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0]]),
+            min_similarity=0.1,
+            min_neighbors=2,
+        )
+
+
+def test_anchor_alignment_recovers_existing_frame():
+    positioner = UMAPPositioner()
+    rng = np.random.default_rng(12)
+    coords = rng.normal(size=(20, 3)).astype(np.float32)
+    reflection = np.diag([-1.0, 1.0, 1.0]).astype(np.float32)
+    target = coords @ reflection * 2.5 + np.array([10.0, -5.0, 3.0])
+    anchor_indices = np.arange(12)
+
+    aligned = positioner.align_to_anchors(coords, anchor_indices, target[anchor_indices])
+
+    assert np.sqrt(np.mean((aligned[anchor_indices] - target[anchor_indices]) ** 2)) < 1e-4
+
+
+def test_quality_metrics_report_local_topology():
+    embeddings, _, _ = _make_cluster_embeddings()
+    positioner = UMAPPositioner()
+    positions = positioner.fit_transform(embeddings)
+
+    metrics = positioner.quality_metrics(embeddings, positions, n_neighbors=5)
+
+    assert metrics["trustworthiness"] >= 0.9
+    assert metrics["neighbor_recall"] >= 0.5
+    assert metrics["quality_k"] == 5
+
+
 def test_umap_performance():
     positioner = UMAPPositioner()
 

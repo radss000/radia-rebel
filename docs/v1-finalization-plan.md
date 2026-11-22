@@ -150,7 +150,7 @@ Chaque résultat retourne :
 ### Architecture
 
 - Intégrer la Sonic Map comme module maintenu de l'application React au lieu d'une expérience isolée difficile à synchroniser.
-- Utiliser un renderer WebGL natif sans dépendance CDN, avec une couche de données et d'état partagée avec React.
+- Conserver Babylon.js pour le moteur 3D, avec une couche de données et d'état partagée avec React.
 - Prévoir un mode dégradé 2D/liste lorsque WebGL ou la puissance GPU sont insuffisants.
 
 ### Expérience cible
@@ -172,14 +172,6 @@ Chaque résultat retourne :
 - Limiter les effets coûteux ; bloom, profondeur et particules doivent s'adapter au niveau GPU.
 - Regrouper les mises à jour visuelles et éviter les recalculs React à chaque frame Babylon.
 - Afficher les connexions uniquement pour la sélection et son voisinage immédiat.
-
-### État d'implémentation au 8 août 2026
-
-- Carte React/WebGL intégrée sans iframe ni CDN Babylon.
-- Orbit, zoom, sélection, recherche, filtres de provenance et fallback accessible disponibles.
-- Voisins affichés depuis l'endpoint CLAP exact, avec liens limités à la sélection courante.
-- Provenance de carte, trustworthiness et rappel local visibles dans l'interface.
-- Build production et tests unitaires frontend validés ; le profilage GPU multi-device reste une tâche de validation de release.
 
 ### Critères d'acceptation
 

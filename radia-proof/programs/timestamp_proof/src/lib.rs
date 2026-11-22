@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
 
 declare_id!("8Hh439HNMKGRTD1gmnifrJ2RrP6y8PsKwHRRQyponubt");
 
