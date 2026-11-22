@@ -38,7 +38,8 @@ venv/
 music-pipeline/.venv/
 __pycache__/
 *.py[cod]
-music-pipeline/processing/audio_assets/
+music-pipeline/processing/audio_assets/**/*.mp3
+music-pipeline/processing/audio_assets/**/*.wav
 music-pipeline/storage/
 music-pipeline/DEL
 music-pipeline/HGETALL
