@@ -76,3 +76,23 @@ def test_audio_modules_do_not_disable_numba_jit():
 
     assert os.getenv("NUMBA_DISABLE_JIT") not in {"1", "true", "True"}
     assert numba.config.DISABLE_JIT == 0
+
+
+def test_wav_loading_matches_librosa_for_common_bit_depths():
+    """Artist uploads are often 24-bit or float WAV; they must load and match librosa."""
+    import librosa
+    import soundfile as sf
+
+    sr_in = 44100
+    t = np.linspace(0, 3, sr_in * 3, endpoint=False)
+    stereo = np.stack([0.4 * np.sin(2 * np.pi * 440 * t), 0.2 * np.sin(2 * np.pi * 220 * t)], axis=1)
+    with tempfile.TemporaryDirectory() as tmp:
+        for subtype in ("PCM_16", "PCM_24", "FLOAT"):
+            path = os.path.join(tmp, f"{subtype}.wav")
+            sf.write(path, stereo, sr_in, subtype=subtype)
+            segment, meta = extract_core_segment(path, sr=48000)
+            reference, _ = librosa.load(path, sr=48000, mono=True)
+            assert meta["method"] == "full_track"
+            assert segment.dtype == np.float32
+            assert segment.shape == reference.shape, subtype
+            assert np.allclose(segment, reference, atol=1e-6), subtype

@@ -18,14 +18,32 @@ See 2-min Loom demo [https://www.loom.com/share/407133f5a33444d08a471b82696b3ed7
    Network throttling on some YouTube links can require longer HTTP timeouts—tune `AUDIO_PREVIEW_CONNECT_TIMEOUT`
    and `AUDIO_PREVIEW_DOWNLOAD_TIMEOUT` if large previews fail to cache.
    Install `ffmpeg` (`brew install ffmpeg`) so YouTube `.m4a` previews can be transcoded before feature extraction—both workers inherit the PATH so `librosa` can call it.
-3. Start the analysis queue worker (uses Redis/RQ) to pick up jobs triggered via the API:
+3. Start the queue workers (Redis/RQ). Production runs two processes so torch/CLAP and UMAP/scikit-learn
+   (two incompatible OpenMP runtimes) never share one:
    ```bash
-   python -m jobs.worker
+   python -m jobs.worker --queues analysis      # preview_fetch, audio_features, embedding (loads CLAP)
+   python -m jobs.worker --queues positioning   # position (UMAP), applies the positioning migration at startup
    ```
+   `python -m jobs.worker` alone consumes both queues in one process (development only). Steps of one track are
+   chained with RQ `depends_on`, and a failed step marks the remaining steps of that track as failed.
 4. Ingest a track through `/api/tracks/ingest`; the worker resolves the external preview (Bandcamp, YouTube, etc.), stores it, and updates provenance fields in `audio_assets`. You can then enqueue downstream jobs (`preview_fetch`, `audio_features`, `embedding`, `position`) via `/api/jobs/enqueue`.
 5. Prefer the streamlined endpoint `/api/tracks/search-ingest` (or the React Sonic Map UI) when you only know the artist/title. It scrapes YouTube's public search results to pick the best match, upserts the track/audio asset, automatically enqueues the full job chain, and returns the job IDs so the frontend can poll sequentially.
 
 The Sonic Map admin page (`frontend/src/pages/SonicMapPage.js`) exposes a “Search & analyze a new track” form that calls `/api/tracks/search-ingest`, streams each job step, and refreshes the native React/WebGL universe as soon as the `position` job finishes. The renderer has no runtime CDN dependency: once the application and map data are loaded, orbiting, zooming, filtering and point selection do not require an internet connection.
+
+### End-to-end test (real stack, no mocks)
+
+`music-pipeline/tests/e2e/` ingests 12 generated tracks served from `127.0.0.1`, runs every job through the real
+workers (PostgreSQL, Redis, Qdrant >= 1.10, CLAP) and checks `/similar`, `/api/tracks/sonic-map` and
+`/api/sonic-map/version`. It runs in GitHub Actions (`.github/workflows/music-pipeline.yml`) and locally with:
+
+```bash
+docker compose up -d postgres redis qdrant
+cd music-pipeline && bash scripts/run_e2e_local.sh   # uses a throwaway rebel_e2e database
+```
+
+Existing databases must apply `music-pipeline/database/migrations/20261122_embeddings_track_unique.sql`
+(embedding jobs fail without the unique index on `embeddings.track_id`).
 
 ### Backfilling existing catalogue entries
 
@@ -52,7 +70,7 @@ The `embedding` job now generates real vectors from the cached preview using LAI
 3. (macOS) If MPS runs out of memory, set `CLAP_DEVICE=cpu` to force CPU inference for stability.
 3. Ensure Qdrant is reachable if you want vectors pushed to the `music_embeddings` collection; set `QDRANT_HOST/PORT/API_KEY`.
 4. Configure longer RQ timeouts if your first CLAP download takes a while (see `JOB_TIMEOUT_DEFAULT` / `EMBEDDING_JOB_TIMEOUT` in `.env.example`—embedding defaults to 900 s). This prevents slow checkpoints from timing out mid-transfer.
-5. Start the RQ worker with `python -m jobs.worker`. The worker warms a singleton CLAP model at startup, so all embedding jobs reuse the same instance. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
+5. Start the RQ workers as described above (`--queues analysis` and `--queues positioning`). The analysis worker warms a singleton CLAP model at startup, so all embedding jobs reuse the same instance. Whenever an `embedding` job runs it loads the cached preview, runs CLAP, updates `tracks.embedding_id`, records metadata in `embeddings`, and upserts the vector in Qdrant.
 
 The worker keeps Numba JIT enabled for UMAP performance and configures a writable cache under the system temporary directory. Set `NUMBA_CACHE_DIR` only when the deployment requires a persistent custom cache path; do not set `NUMBA_DISABLE_JIT`, because it makes full map recalculation impractically slow.
 

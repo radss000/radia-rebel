@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Dict, Tuple
-import wave
 
-import librosa
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -20,34 +17,35 @@ class AudioLoadError(RuntimeError):
     """Raised when librosa cannot load an audio file."""
 
 
-def _load_wav_mono(audio_path: str, sr: int) -> np.ndarray:
-    with wave.open(audio_path, "rb") as wav_file:
-        channels = wav_file.getnchannels()
-        sample_width = wav_file.getsampwidth()
-        file_sr = wav_file.getframerate()
-        frame_count = wav_file.getnframes()
-        raw = wav_file.readframes(frame_count)
+def _load_audio_mono(audio_path: str, sr: int) -> np.ndarray:
+    """Load audio as mono float32 at ``sr``.
 
-    if sample_width == 2:
-        dtype = np.int16
-        max_val = 32768.0
-    elif sample_width == 4:
-        dtype = np.int32
-        max_val = 2147483648.0
-    else:
-        raise AudioLoadError(f"Unsupported WAV sample width: {sample_width}")
+    Mirrors ``librosa.load(path, sr=sr, mono=True)`` (soundfile decode, channel
+    mean, soxr "HQ" resampling) without importing librosa, so WAV/FLAC/OGG
+    (any bit depth) load fast and produce the same samples as the librosa path.
+    Formats libsndfile cannot decode fall back to librosa/audioread.
+    """
+    try:
+        import soundfile as sf
 
-    audio = np.frombuffer(raw, dtype=dtype).astype(np.float32) / max_val
-    if channels > 1:
-        audio = audio.reshape(-1, channels).mean(axis=1)
+        audio, file_sr = sf.read(audio_path, dtype="float32", always_2d=True)
+    except Exception:
+        import librosa
 
-    if file_sr != sr and len(audio) > 1:
-        duration = len(audio) / float(file_sr)
-        target_len = max(1, int(round(duration * sr)))
-        src_idx = np.linspace(0.0, 1.0, num=len(audio), endpoint=False)
-        dst_idx = np.linspace(0.0, 1.0, num=target_len, endpoint=False)
-        audio = np.interp(dst_idx, src_idx, audio).astype(np.float32)
-    return audio
+        audio, _ = librosa.load(audio_path, sr=sr, mono=True)
+        return np.asarray(audio, dtype=np.float32)
+
+    audio = audio.mean(axis=1) if audio.shape[1] > 1 else audio[:, 0]
+    if file_sr != sr and audio.size > 1:
+        import soxr
+
+        target_len = int(np.ceil(audio.shape[0] * (float(sr) / file_sr)))
+        audio = soxr.resample(audio, file_sr, sr, quality="HQ")
+        # Same length convention as librosa.resample (ceil + pad/trim).
+        if audio.shape[0] < target_len:
+            audio = np.pad(audio, (0, target_len - audio.shape[0]))
+        audio = audio[:target_len]
+    return np.ascontiguousarray(audio, dtype=np.float32)
 
 
 def extract_core_segment(
@@ -56,15 +54,9 @@ def extract_core_segment(
     sr: int = 48000,
 ) -> Tuple[np.ndarray, Dict[str, float | str]]:
     try:
-        audio, _ = librosa.load(audio_path, sr=sr, mono=True)
+        audio = _load_audio_mono(audio_path, sr)
     except Exception as exc:
-        if os.path.splitext(audio_path)[1].lower() == ".wav":
-            try:
-                audio = _load_wav_mono(audio_path, sr)
-            except Exception as wav_exc:
-                raise AudioLoadError(f"Cannot load audio: {audio_path}") from wav_exc
-        else:
-            raise AudioLoadError(f"Cannot load audio: {audio_path}") from exc
+        raise AudioLoadError(f"Cannot load audio: {audio_path}") from exc
     return extract_core_segment_from_array(audio, sr, target_duration=target_duration)
 
 

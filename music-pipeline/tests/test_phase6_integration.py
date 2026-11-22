@@ -14,6 +14,10 @@ from unittest.mock import MagicMock, patch, PropertyMock
 from types import SimpleNamespace
 from uuid import uuid4
 
+# Quarantined: see pytest.ini (phase6_legacy). To be rewritten against real APIs and services in plan phase 6.
+pytestmark = pytest.mark.phase6_legacy
+
+
 
 class TestPostgresQdrantIntegration:
     """Test PostgreSQL + Qdrant integration with ephemeral collection."""

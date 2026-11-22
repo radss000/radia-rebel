@@ -59,6 +59,35 @@ La V1 est considérée accurate lorsque :
 - Aucun module audio ne modifie globalement le runtime d'un module de positionnement.
 - Le worker peut enchaîner `audio_features → embedding → position` sans fuite mémoire manifeste.
 
+### État au 22 novembre 2026 (branche `phase1-runtime-stabilization`)
+
+- [x] Plus aucune modification globale de `NUMBA_DISABLE_JIT` ; un test le vérifie.
+- [x] UMAP, scikit-learn et librosa sont importés à la demande ; la collecte pytest passe d'environ 50 s à moins de 2 s.
+- [x] Les 35 tests hors `phase6_legacy` passent dans un même processus (environ 17 s avec les caches chauds).
+- [x] UMAP : 30 embeddings en 11 s (compilation numba au premier appel), 1 000 en 2,4 s, 5 000 en 45 s (pic à 1,2 Go).
+- [x] Chargement audio par soundfile + soxr, identique à librosa, y compris pour les WAV 24 bits et float.
+- [x] Configuration CLAP alignée entre les deux `.env.example`.
+- [x] Le module `processing/audio_assets/` est désormais versionné (il était exclu par `.gitignore`).
+- [x] Chaîne du worker avec le vrai modèle CLAP (MacBook, 11 morceaux FLAC réels, 3 passes) : mémoire stable à 1 456 Mo, +0 Mo après échauffement. Médiane par morceau : caractéristiques audio 4,75 s, segment central + embedding 1,08 s.
+- Constats à traiter dans les phases suivantes :
+  - Le chargement de CLAP a pris 1 024 s, probablement parce que le checkpoint est sur un Bureau synchronisé par iCloud et non téléchargé. En développement, garder `checkpoints/` hors d'iCloud ; en production, l'intégrer à l'image ou au volume.
+  - Ce sont les caractéristiques audio qui ralentissent le worker (environ 4 fois plus longues que l'embedding) : elles analysent le morceau entier à 22 050 Hz.
+  - Intel OpenMP (torch) et LLVM OpenMP (scikit-learn/UMAP) sont chargés dans le même processus, avec un risque de blocage ou de crash. Cela justifie de séparer les workers embedding et positionnement.
+- [ ] Réécrire les tests `test_phase6_*`, exclus par défaut (marqueur `phase6_legacy`), contre les vraies API (phase 6).
+- Point de vigilance : à 5 000 embeddings synthétiques, le rappel des voisins tombe à 0,37, juste au-dessus du seuil provisoire de 0,35. La calibration de la phase 4 est prioritaire.
+
+### État au 22 novembre 2026 : parcours de bout en bout réel (branche `phase2-e2e-ci`)
+
+- [x] Test E2E sans mock (`music-pipeline/tests/e2e`) : 12 morceaux générés et servis en local, ingestion → preview → features → CLAP/Qdrant → position → `/similar` → `/sonic-map` → `/version`. Il passe sur une stack vierge, en local et dans GitHub Actions (`music-pipeline.yml`, avec le vrai checkpoint CLAP).
+- [x] Workers séparés : `analysis` (CLAP) et `positioning` (UMAP), chaînés par RQ `depends_on` ; un échec marque les étapes suivantes comme échouées.
+- [x] Bugs corrigés grâce au parcours réel :
+  - ingestion par URL directe (`other`) sans adaptateur : `preview_fetch` échouait toujours ;
+  - `ON CONFLICT (track_id)` sur `embeddings` sans index unique sur une base neuve (migration `20261122_embeddings_track_unique.sql`) ;
+  - blocage du worker de positionnement sur lui-même (transaction de lecture ouverte plus `ALTER TABLE`) au premier job après chaque démarrage ;
+  - `docker-compose.yml` fixé à Qdrant 1.7.4, incompatible avec `query_points` : passage à 1.12.6.
+- [x] Option `AUDIO_FEATURES_SOURCE=core` (environ 4,5 fois plus rapide, désactivée par défaut).
+- Constat : avec le seuil de production (trustworthiness ≥ 0,90), une carte de 12 morceaux est toujours rejetée et tous les morceaux restent en `features_fallback`. Un petit catalogue n'aura donc jamais de carte CLAP tant que la calibration (phase 4) n'est pas faite.
+
 ## Phase 2 — Finaliser l'API de similarité
 
 ### Contrat proposé

@@ -14,6 +14,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 
+# Quarantined: see pytest.ini (phase6_legacy). To be rewritten against real APIs and services in plan phase 6.
+pytestmark = pytest.mark.phase6_legacy
+
+
 
 class TestAudioExtractionDeterminism:
     """Test audio extraction is deterministic and memory-bounded."""

@@ -33,6 +33,7 @@ if not pipeline_env.exists() and not repo_env.exists():
     load_dotenv(override=False)
 
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "music_embeddings")
+POSITIONING_SCHEMA_LOCK_TIMEOUT = os.getenv("POSITIONING_SCHEMA_LOCK_TIMEOUT", "30s")
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
@@ -278,6 +279,9 @@ def ensure_positioning_schema() -> None:
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
+            # ALTER TABLE takes an ACCESS EXCLUSIVE lock even when the columns exist:
+            # fail fast instead of hanging if another session holds `tracks`.
+            cursor.execute("SET LOCAL lock_timeout = %s", (POSITIONING_SCHEMA_LOCK_TIMEOUT,))
             cursor.execute(migration_sql)
         conn.commit()
         _POSITIONING_SCHEMA_READY = True

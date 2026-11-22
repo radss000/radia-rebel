@@ -1,0 +1,135 @@
+name: music-pipeline
+
+on:
+  push:
+    branches: [radia, main]
+    paths:
+      - "music-pipeline/**"
+      - "docker-compose.yml"
+      - ".github/workflows/music-pipeline.yml"
+  pull_request:
+    paths:
+      - "music-pipeline/**"
+      - "docker-compose.yml"
+      - ".github/workflows/music-pipeline.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: music-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu  # CPU torch wheels (no CUDA download)
+
+defaults:
+  run:
+    working-directory: music-pipeline
+
+jobs:
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: music-pipeline/requirements.txt
+      - name: System audio libraries
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1 ffmpeg
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: pytest (unit, excludes e2e and phase6_legacy)
+        run: python -m pytest -q --durations=10
+
+  e2e:
+    name: end-to-end (real Postgres, Redis, Qdrant, CLAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: unit
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: rebel
+          POSTGRES_PASSWORD: rebel_password
+          POSTGRES_DB: rebel_music
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rebel -d rebel_music"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+      qdrant:
+        image: qdrant/qdrant:v1.12.6
+        ports: ["6333:6333"]
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_USER: rebel
+      POSTGRES_PASSWORD: rebel_password
+      POSTGRES_DB: rebel_music
+      REDIS_URL: redis://localhost:6379/0
+      QDRANT_HOST: localhost
+      QDRANT_PORT: "6333"
+      AUDIO_STORAGE_MODE: local
+      CLAP_CHECKPOINT_PATH: checkpoints/music_audioset_epoch_15_esc_90.14.pt
+      CLAP_DEVICE: cpu
+      NUMBA_CACHE_DIR: /tmp/rebel-numba-cache
+      # 12 fixture tracks cannot reach the production gate (0.90); lower it on the
+      # test stack only so the map publication path runs. Gate logic is unit-tested.
+      UMAP_MIN_TRUSTWORTHINESS: "0.5"
+      REBEL_E2E_API_URL: http://127.0.0.1:8000
+      REBEL_E2E_EXPECT_PUBLISHED_MAP: "1"
+      REBEL_E2E_JOB_TIMEOUT: "1200"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: music-pipeline/requirements.txt
+      - name: System audio libraries
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1 ffmpeg
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Cache CLAP checkpoint
+        uses: actions/cache@v4
+        with:
+          path: music-pipeline/checkpoints
+          key: clap-music_audioset_epoch_15_esc_90.14
+      - name: Cache Hugging Face models (roberta-base tokenizer/text branch)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-clap-roberta-v1
+      - name: Download CLAP checkpoint
+        run: python scripts/download_clap_checkpoint.py
+      - name: Initialise database and Qdrant collection (fresh schema)
+        run: python database/init_db.py
+      - name: Start API and workers (analysis + positioning, separate processes)
+        run: |
+          mkdir -p /tmp/rebel-logs
+          nohup python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 > /tmp/rebel-logs/api.log 2>&1 &
+          nohup python -m jobs.worker --queues analysis > /tmp/rebel-logs/worker-analysis.log 2>&1 &
+          nohup python -m jobs.worker --queues positioning > /tmp/rebel-logs/worker-positioning.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/ > /dev/null && break; sleep 2; done
+          curl -sf http://127.0.0.1:8000/ > /dev/null
+          # CLAP must be loaded before jobs arrive, otherwise the first embedding job pays the load time.
+          for i in $(seq 1 180); do grep -q "Listening on analysis" /tmp/rebel-logs/worker-analysis.log && break; sleep 5; done
+          grep -q "Listening on analysis" /tmp/rebel-logs/worker-analysis.log
+          grep -q "Listening on positioning" /tmp/rebel-logs/worker-positioning.log
+      - name: pytest -m e2e
+        run: python -m pytest -m e2e tests/e2e -v
+      - name: Service logs
+        if: failure()
+        run: |
+          for f in /tmp/rebel-logs/*.log; do echo "::group::$f"; tail -n 200 "$f"; echo "::endgroup::"; done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-logs
+          path: /tmp/rebel-logs/

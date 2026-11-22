@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 
 import numpy as np
-import librosa
 
 
 def normalise_feature(value: float, min_val: float, max_val: float) -> float:
@@ -49,6 +48,8 @@ def _convert_to_wav(source_path: str, sample_rate: int) -> str:
 
 
 def _load_audio_with_fallback(audio_path: str, sample_rate: int):
+    import librosa
+
     try:
         return librosa.load(audio_path, sr=sample_rate, mono=True)
     except Exception:
@@ -62,18 +63,38 @@ def _load_audio_with_fallback(audio_path: str, sample_rate: int):
                 os.unlink(converted_path)
 
 
-def extract_audio_features(audio_path: str):
+def _features_source(explicit: str | None) -> str:
+    value = (explicit or os.getenv("AUDIO_FEATURES_SOURCE", "full")).strip().lower()
+    return value if value in {"full", "core"} else "full"
+
+
+def extract_audio_features(audio_path: str, source: str | None = None):
+    """Descriptive features (tempo, energy, ...) used by the UI and fallback positions.
+
+    ``source`` (or env ``AUDIO_FEATURES_SOURCE``): ``full`` analyses the whole file
+    (historical behaviour, default); ``core`` analyses the same 30 s central
+    segment as the CLAP embedding, roughly 4-8x faster on full-length tracks.
+    Values differ between the two modes: do not mix them in one catalogue
+    without re-running audio_features for every track.
+    """
     try:
+        import librosa
+
         y, sr = _load_audio_with_fallback(audio_path, sample_rate=22050)
         if not len(y):
             raise ValueError("Audio buffer empty")
+        full_duration = librosa.get_duration(y=y, sr=sr)
+        if _features_source(source) == "core":
+            from processing.audio_core_extractor import extract_core_segment_from_array
+
+            y, _meta = extract_core_segment_from_array(y, sr, target_duration=30)
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         rms = librosa.feature.rms(y=y)[0]
         zcr = librosa.feature.zero_crossing_rate(y=y)[0]
         spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
         spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)[0]
         rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)[0]
-        duration = librosa.get_duration(y=y, sr=sr)
+        duration = full_duration
 
         energy = normalise_feature(np.mean(rms) * 4, 0, 1.5)
         danceability = normalise_feature(np.mean(zcr) * 5, 0, 2.5)

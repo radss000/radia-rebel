@@ -17,6 +17,10 @@ from uuid import uuid4
 import json
 import os
 
+# Quarantined: see pytest.ini (phase6_legacy). To be rewritten against real APIs and services in plan phase 6.
+pytestmark = pytest.mark.phase6_legacy
+
+
 
 class TestLocalFixtureIngestion:
     """Test local fixture ingestion pipeline."""

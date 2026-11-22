@@ -21,7 +21,7 @@ services:
 
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.7.4
+    image: qdrant/qdrant:v1.12.6  # >= 1.10 required: api/similarity.py uses query_points (qdrant-client 1.12)
     container_name: rebel_qdrant
     volumes:
       - qdrant_data:/qdrant/storage

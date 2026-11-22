@@ -8,6 +8,8 @@ cookies, etc.).
 Adapters currently implemented:
     - ``bandcamp``: scrape track pages to extract the preview MP3 URL, falling
       back to the stored ``provider_preview_url`` when available.
+    - ``youtube_music``: yt-dlp download.
+    - ``other``: plain http(s) audio URL (artist uploads).
 
 Additional adapters (e.g. Bandcamp, YouTube via yt-dlp) can be
 registered via ``register_adapter``.
@@ -15,12 +17,15 @@ registered via ``register_adapter``.
 
 from .base import PreviewAdapter, PreviewAdapterError, PreviewFetchResult, register_adapter, get_adapter
 from .bandcamp import BandcampPreviewAdapter
+from .direct import DirectURLPreviewAdapter
 from .youtube import YouTubePreviewAdapter
 
 # Register default adapters at import time
 register_adapter("bandcamp", BandcampPreviewAdapter())
 register_adapter("discogs", BandcampPreviewAdapter())  # Discogs often links to Bandcamp previews
 register_adapter("youtube_music", YouTubePreviewAdapter())
+# Direct uploads / plain audio URLs ingested through /api/tracks/ingest
+register_adapter("other", DirectURLPreviewAdapter())
 
 __all__ = [
     "PreviewAdapter",
