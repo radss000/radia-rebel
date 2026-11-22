@@ -59,6 +59,19 @@ La V1 est considérée accurate lorsque :
 - Aucun module audio ne modifie globalement le runtime d'un module de positionnement.
 - Le worker peut enchaîner `audio_features → embedding → position` sans fuite mémoire manifeste.
 
+### État au 22 novembre 2026 (branche `phase1-runtime-stabilization`)
+
+- [x] Plus aucune modification globale de `NUMBA_DISABLE_JIT` ; un test le vérifie.
+- [x] UMAP, scikit-learn et librosa sont importés à la demande ; la collecte pytest passe d'environ 50 s à moins de 2 s.
+- [x] Les 35 tests hors `phase6_legacy` passent dans un même processus (environ 17 s avec les caches chauds).
+- [x] UMAP : 30 embeddings en 11 s (compilation numba au premier appel), 1 000 en 2,4 s, 5 000 en 45 s (pic à 1,2 Go).
+- [x] Chargement audio par soundfile + soxr, identique à librosa, y compris pour les WAV 24 bits et float.
+- [x] Configuration CLAP alignée entre les deux `.env.example`.
+- [x] Le module `processing/audio_assets/` est désormais versionné (il était exclu par `.gitignore`).
+- [ ] Chaîne du worker avec le vrai modèle CLAP : lancer `python scripts/phase1_worker_chain_check.py --audio-dir <dossier> --rounds 3`. Sans CLAP, la mémoire reste stable sur 5 passes.
+- [ ] Réécrire les tests `test_phase6_*`, exclus par défaut (marqueur `phase6_legacy`), contre les vraies API (phase 6).
+- Point de vigilance : à 5 000 embeddings synthétiques, le rappel des voisins tombe à 0,37, juste au-dessus du seuil provisoire de 0,35. La calibration de la phase 4 est prioritaire.
+
 ## Phase 2 — Finaliser l'API de similarité
 
 ### Contrat proposé
