@@ -137,7 +137,7 @@ def setup_qdrant():
         client = QdrantClient(host=qdrant_host, port=qdrant_port)
         
         # Create collection for music embeddings
-        collection_name = 'music_embeddings'
+        collection_name = os.getenv('QDRANT_COLLECTION', 'music_embeddings')
         
         # Check if collection exists
         try:

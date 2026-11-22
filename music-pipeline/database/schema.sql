@@ -419,6 +419,8 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_track ON embeddings(track_id);
+-- One embedding row per track: jobs.tasks.embedding_task upserts with ON CONFLICT (track_id).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_track_unique ON embeddings(track_id);
 
 -- ============================================================
 -- CRAWL HISTORY TABLE
