@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "corpus_id": "rebel-validation-synthetic",
+  "corpus_version": "1.0.0",
+  "release_eligible": false,
+  "description": "Deterministic, copyright-free audio controls for validating the REBEL benchmark pipeline before blind human annotation on a licensed catalogue corpus.",
+  "annotation_protocol": {
+    "mode": "fixture_relationship_by_construction",
+    "relevance_floor": "related",
+    "label_order": [
+      "different",
+      "related",
+      "close",
+      "very_close"
+    ],
+    "neighbor_k": 10,
+    "minimum_trustworthiness": 0.9,
+    "minimum_neighbor_recall": 0.7,
+    "release_requirement": "A separate licensed corpus must be annotated from blind listening by at least two human raters before activation."
+  },
+  "embedding_spec": {
+    "model_name": "clap-htsat-base",
+    "model_version": "1.0",
+    "checkpoint": "music_audioset_epoch_15_esc_90.14.pt",
+    "sample_rate": 48000,
+    "segment_strategy": "full_short_fixture",
+    "segment_duration_seconds": 30,
+    "fixture_duration_seconds": 6
+  },
+  "tracks": [
+    {
+      "id": "pulse_core",
+      "path": "audio/pulse_core.wav",
+      "family": "pulse",
+      "close_group": "pulse_core_group",
+      "identity_group": "pulse_core_identity",
+      "fixture": {"type": "pulse", "bpm": 120, "frequency": 110, "brightness": 0.35, "gain": 0.72}
+    },
+    {
+      "id": "pulse_core_gain",
+      "path": "audio/pulse_core_gain.wav",
+      "family": "pulse",
+      "close_group": "pulse_core_group",
+      "identity_group": "pulse_core_identity",
+      "fixture": {"type": "pulse", "bpm": 120, "frequency": 110, "brightness": 0.35, "gain": 0.48}
+    },
+    {
+      "id": "pulse_core_detuned",
+      "path": "audio/pulse_core_detuned.wav",
+      "family": "pulse",
+      "close_group": "pulse_core_group",
+      "identity_group": "pulse_detuned_identity",
+      "fixture": {"type": "pulse", "bpm": 122, "frequency": 116, "brightness": 0.38, "gain": 0.72}
+    },
+    {
+      "id": "pulse_bright",
+      "path": "audio/pulse_bright.wav",
+      "family": "pulse",
+      "close_group": "pulse_bright_group",
+      "identity_group": "pulse_bright_identity",
+      "fixture": {"type": "pulse", "bpm": 120, "frequency": 220, "brightness": 0.92, "gain": 0.62}
+    },
+    {
+      "id": "pulse_half_time",
+      "path": "audio/pulse_half_time.wav",
+      "family": "pulse",
+      "close_group": "pulse_half_time_group",
+      "identity_group": "pulse_half_time_identity",
+      "fixture": {"type": "pulse", "bpm": 60, "frequency": 98, "brightness": 0.28, "gain": 0.76}
+    },
+    {
+      "id": "ambient_core",
+      "path": "audio/ambient_core.wav",
+      "family": "ambient",
+      "close_group": "ambient_core_group",
+      "identity_group": "ambient_core_identity",
+      "fixture": {"type": "ambient", "frequency": 146.83, "motion": 0.12, "gain": 0.54}
+    },
+    {
+      "id": "ambient_core_gain",
+      "path": "audio/ambient_core_gain.wav",
+      "family": "ambient",
+      "close_group": "ambient_core_group",
+      "identity_group": "ambient_core_identity",
+      "fixture": {"type": "ambient", "frequency": 146.83, "motion": 0.12, "gain": 0.36}
+    },
+    {
+      "id": "ambient_shifted",
+      "path": "audio/ambient_shifted.wav",
+      "family": "ambient",
+      "close_group": "ambient_core_group",
+      "identity_group": "ambient_shifted_identity",
+      "fixture": {"type": "ambient", "frequency": 155.56, "motion": 0.14, "gain": 0.54}
+    },
+    {
+      "id": "ambient_granular",
+      "path": "audio/ambient_granular.wav",
+      "family": "ambient",
+      "close_group": "ambient_granular_group",
+      "identity_group": "ambient_granular_identity",
+      "fixture": {"type": "ambient", "frequency": 196, "motion": 1.25, "gain": 0.5}
+    },
+    {
+      "id": "pluck_core",
+      "path": "audio/pluck_core.wav",
+      "family": "pluck",
+      "close_group": "pluck_core_group",
+      "identity_group": "pluck_core_identity",
+      "fixture": {"type": "pluck", "bpm": 90, "frequency": 196, "decay": 7, "gain": 0.58}
+    },
+    {
+      "id": "pluck_core_gain",
+      "path": "audio/pluck_core_gain.wav",
+      "family": "pluck",
+      "close_group": "pluck_core_group",
+      "identity_group": "pluck_core_identity",
+      "fixture": {"type": "pluck", "bpm": 90, "frequency": 196, "decay": 7, "gain": 0.4}
+    },
+    {
+      "id": "pluck_shifted",
+      "path": "audio/pluck_shifted.wav",
+      "family": "pluck",
+      "close_group": "pluck_core_group",
+      "identity_group": "pluck_shifted_identity",
+      "fixture": {"type": "pluck", "bpm": 92, "frequency": 207.65, "decay": 6.5, "gain": 0.58}
+    },
+    {
+      "id": "experimental_chirps",
+      "path": "audio/experimental_chirps.wav",
+      "family": "experimental",
+      "close_group": "experimental_chirps_group",
+      "identity_group": "experimental_chirps_identity",
+      "fixture": {"type": "experimental", "frequency": 80, "sweep": 620, "seed": 1701, "gain": 0.62}
+    }
+  ],
+  "pair_overrides": []
+}

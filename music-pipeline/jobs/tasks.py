@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Callable
-from types import MethodType
 
 import numpy as np
 from dotenv import load_dotenv
@@ -28,7 +27,14 @@ if not pipeline_env.exists() and not repo_env.exists():
     load_dotenv(override=False)
 
 from database.utils import get_db_connection
+from processing.runtime import configure_numba_cache
+
+configure_numba_cache()
+
+from processing.audio_core_extractor import extract_core_segment
 from processing.audio_features import extract_audio_features, derive_position, load_audio_mono
+from jobs.position_job import run_position_job
+from processing.embeddings.clap_singleton import get_clap_model
 from processing.audio_assets.service import StorageClient, process_audio_asset
 
 JOB_TASK_MAP = {
@@ -40,9 +46,6 @@ JOB_TASK_MAP = {
 
 logger = logging.getLogger(__name__)
 
-CLAP_AMODEL = os.getenv("CLAP_AMODEL", "HTSAT-tiny")
-CLAP_ENABLE_FUSION = os.getenv("CLAP_ENABLE_FUSION", "false").lower() == "true"
-CLAP_CHECKPOINT_PATH = os.getenv("CLAP_CHECKPOINT_PATH")
 CLAP_MODEL_NAME = os.getenv("CLAP_MODEL_NAME", "clap-htsat-base")
 CLAP_MODEL_VERSION = os.getenv("CLAP_MODEL_VERSION", "1.0")
 EMBEDDING_SAMPLE_RATE = int(os.getenv("EMBEDDING_SAMPLE_RATE", 48000))
@@ -51,11 +54,8 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH")
+GCS_DOWNLOAD_TIMEOUT = int(os.getenv("GCS_DOWNLOAD_TIMEOUT", os.getenv("AUDIO_PREVIEW_DOWNLOAD_TIMEOUT", "300")))
 
-CANNED_CLAP_AMODEL = "HTSAT-tiny"
-AUTO_DOWNLOAD_CLAP_AMODELS = {CANNED_CLAP_AMODEL}
-
-_CLAP_MODEL = None
 _QDRANT_CLIENT = None
 _QDRANT_DISABLED = False
 
@@ -164,69 +164,6 @@ def _fetch_latest_asset_for_track(conn, track_id: int) -> Optional[Dict[str, Any
             (track_id,),
         )
         return cursor.fetchone()
-
-
-def _resolve_clap_amodel() -> str:
-    """Ensure we only request architectures we actually have weights for."""
-    if CLAP_CHECKPOINT_PATH:
-        return CLAP_AMODEL
-    if CLAP_AMODEL not in AUTO_DOWNLOAD_CLAP_AMODELS:
-        fallback = CANNED_CLAP_AMODEL
-        logger.warning(
-            "CLAP_AMODEL=%s requires CLAP_CHECKPOINT_PATH; falling back to %s bundled weights",
-            CLAP_AMODEL,
-            fallback,
-        )
-        return fallback
-    return CLAP_AMODEL
-
-
-def _patch_clap_state_dict_loader(model) -> None:
-    """Strip incompatible keys before laion-clap loads checkpoints."""
-    if getattr(model, "_patched_state_dict_loader", False):
-        return
-
-    original_loader = model.model.load_state_dict
-
-    def _safe_load_state_dict(self, state_dict, strict=True):
-        if "text_branch.embeddings.position_ids" in state_dict:
-            state_dict = dict(state_dict)
-            state_dict.pop("text_branch.embeddings.position_ids", None)
-        return original_loader(state_dict, strict=strict)
-
-    model.model.load_state_dict = MethodType(_safe_load_state_dict, model.model)
-    setattr(model, "_patched_state_dict_loader", True)
-
-
-def _get_clap_model():
-    global _CLAP_MODEL
-    if _CLAP_MODEL is not None:
-        return _CLAP_MODEL
-    try:
-        from laion_clap import CLAP_Module  # type: ignore
-    except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError("laion-clap not installed; pip install laion-clap to enable embeddings") from exc
-
-    amodel = _resolve_clap_amodel()
-    logger.info("Loading CLAP model (%s)...", amodel)
-    model = CLAP_Module(enable_fusion=CLAP_ENABLE_FUSION, amodel=amodel)
-    _patch_clap_state_dict_loader(model)
-    if CLAP_CHECKPOINT_PATH:
-        ckpt_path = Path(CLAP_CHECKPOINT_PATH).expanduser()
-        if ckpt_path.exists():
-            logger.info("Loading CLAP checkpoint from %s", ckpt_path)
-            model.load_ckpt(str(ckpt_path))
-        else:
-            logger.warning(
-                "CLAP checkpoint %s not found; falling back to default download.",
-                ckpt_path,
-            )
-            model.load_ckpt()
-    else:
-        model.load_ckpt()
-    _CLAP_MODEL = model
-    logger.info("CLAP model ready")
-    return _CLAP_MODEL
 
 
 def _get_qdrant_client():
@@ -362,7 +299,10 @@ def embedding_task(job_id: str) -> None:
         try:
             if not os.path.exists(local_path):
                 raise FileNotFoundError(f"Stored preview not found for asset {asset.get('id')}")
-            audio, _ = load_audio_mono(local_path, sample_rate=EMBEDDING_SAMPLE_RATE)
+            audio, meta = extract_core_segment(
+                local_path, target_duration=30, sr=EMBEDDING_SAMPLE_RATE
+            )
+            logger.info("Core: %.1fs-%.1fs", meta["start_sec"], meta["end_sec"])
             if audio is None or not len(audio):
                 raise ValueError("Audio buffer empty for embedding generation")
         finally:
@@ -373,7 +313,7 @@ def embedding_task(job_id: str) -> None:
         audio_batch = [audio]
 
         try:
-            clap_model = _get_clap_model()
+            clap_model = get_clap_model()
         except RuntimeError as exc:  # pragma: no cover - optional dependency
             if "laion-clap not installed" in str(exc):
                 logger.warning("Skipping embedding job %s: %s", job_id, exc)
@@ -418,7 +358,12 @@ def embedding_task(job_id: str) -> None:
                         qmodels.PointStruct(
                             id=qdrant_id,
                             vector=embedding.tolist(),
-                            payload={"track_id": track_id},
+                            payload={
+                                "track_id": track_id,
+                                "model_name": CLAP_MODEL_NAME,
+                                "model_version": CLAP_MODEL_VERSION,
+                                "vector_dimensions": vector_dimensions,
+                            },
                         )
                     ],
                 )
@@ -450,56 +395,78 @@ def position_task(job_id: str) -> None:
         track_id = job.get("track_id")
         if not track_id:
             raise ValueError("Position job requires a track_id")
+        logger.info("position_task: starting for track %s", track_id)
         track = _fetch_track(conn, track_id)
         if not track:
             raise ValueError(f"Track {track_id} not found")
-
-        features = {
-            "energy": track.get("energy") or 0.5,
-            "danceability": track.get("danceability") or 0.5,
-            "acousticness": track.get("acousticness") or 0.5,
-            "brightness": track.get("brightness") or 0.5,
-            "bass": track.get("bass") or 0.5,
-            "valence": track.get("valence") or 0.5,
-        }
-        position, color, size, emissive = derive_position(features)
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE tracks
-                SET position_x = %s,
-                    position_y = %s,
-                    position_z = %s,
-                    color_r = %s,
-                    color_g = %s,
-                    color_b = %s,
-                    sphere_size = %s,
-                    emissive_intensity = %s,
-                    updated_at = NOW()
-                WHERE id = %s
-                """,
-                (
-                    float(position[0]),
-                    float(position[1]),
-                    float(position[2]),
-                    float(color[0]),
-                    float(color[1]),
-                    float(color[2]),
-                    float(size),
-                    float(emissive),
-                    track_id,
-                ),
+        logger.info("position_task: calling run_position_job for track %s", track_id)
+        try:
+            result = run_position_job(str(track_id))
+        except Exception as exc:
+            logger.warning("UMAP positioning failed for track %s: %s", track_id, exc)
+            import traceback
+            logger.warning("UMAP traceback: %s", traceback.format_exc())
+            result = None
+        logger.info("position_task: run_position_job returned %s for track %s", "result" if result else "None", track_id)
+        if result is None:
+            features = {
+                "energy": track.get("energy") or 0.5,
+                "danceability": track.get("danceability") or 0.5,
+                "acousticness": track.get("acousticness") or 0.5,
+                "brightness": track.get("brightness") or 0.5,
+                "bass": track.get("bass") or 0.5,
+                "valence": track.get("valence") or 0.5,
+            }
+            position, color, size, emissive = derive_position(features)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tracks
+                    SET position_x = %s,
+                        position_y = %s,
+                        position_z = %s,
+                        position_method = 'features_fallback',
+                        position_version_id = NULL,
+                        positioned_at = NOW(),
+                        position_quality = %s,
+                        color_r = %s,
+                        color_g = %s,
+                        color_b = %s,
+                        sphere_size = %s,
+                        emissive_intensity = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (
+                        float(position[0]),
+                        float(position[1]),
+                        float(position[2]),
+                        Json({"source": "audio_features", "reason": "clap_position_unavailable"}),
+                        float(color[0]),
+                        float(color[1]),
+                        float(color[2]),
+                        float(size),
+                        float(emissive),
+                        track_id,
+                    ),
+                )
+            conn.commit()
+            _mark_job_succeeded(
+                conn,
+                job_id,
+                {
+                    "position": {"x": float(position[0]), "y": float(position[1]), "z": float(position[2])},
+                    "color": {"r": float(color[0]), "g": float(color[1]), "b": float(color[2])},
+                    "sphere_size": float(size),
+                    "position_method": "features_fallback",
+                    "position_quality": {
+                        "source": "audio_features",
+                        "reason": "clap_position_unavailable",
+                    },
+                },
             )
-        conn.commit()
-        _mark_job_succeeded(
-            conn,
-            job_id,
-            {
-                "position": {"x": float(position[0]), "y": float(position[1]), "z": float(position[2])},
-                "color": {"r": float(color[0]), "g": float(color[1]), "b": float(color[2])},
-                "sphere_size": float(size),
-            },
-        )
+        else:
+            _mark_job_succeeded(conn, job_id, {"position": result})
     except Exception as exc:  # pragma: no cover
         conn.rollback()
         _mark_job_failed(conn, job_id, str(exc))
@@ -531,7 +498,8 @@ def _materialize_storage_path(storage_path: str) -> tuple[str, Optional[Callable
         client = gcs_storage.Client.from_service_account_json(str(resolved))
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-        blob.download_to_filename(tmp_file.name)
+        logger.info("Downloading preview from GCS bucket=%s blob=%s", bucket_name, blob_name)
+        blob.download_to_filename(tmp_file.name, timeout=GCS_DOWNLOAD_TIMEOUT)
 
         def _cleanup() -> None:
             try:

@@ -1,0 +1,1439 @@
+{
+  "acceptance": {
+    "label_coverage": true,
+    "neighbor_recall": true,
+    "release_eligible_corpus": false,
+    "release_ready": false,
+    "trustworthiness": false
+  },
+  "calibration": {
+    "diagnostics": {
+      "close": {
+        "balanced_accuracy": 0.9444444444444444,
+        "f1": 0.9411764705882353,
+        "false_negative": 1,
+        "false_positive": 0,
+        "precision": 1.0,
+        "recall": 0.8888888888888888,
+        "true_negative": 69,
+        "true_positive": 8
+      },
+      "related": {
+        "balanced_accuracy": 0.9473684210526316,
+        "f1": 0.9444444444444444,
+        "false_negative": 2,
+        "false_positive": 0,
+        "precision": 1.0,
+        "recall": 0.8947368421052632,
+        "true_negative": 59,
+        "true_positive": 17
+      },
+      "very_close": {
+        "balanced_accuracy": 0.8333333333333333,
+        "f1": 0.8,
+        "false_negative": 1,
+        "false_positive": 0,
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "true_negative": 75,
+        "true_positive": 2
+      }
+    },
+    "id": "7f882c33dd1f68ee",
+    "label_counts": {
+      "close": 6,
+      "different": 59,
+      "related": 10,
+      "very_close": 3
+    },
+    "method": "nested_f1_with_monotonic_constraints_v1",
+    "thresholds": {
+      "close": 0.8971513509750366,
+      "related": 0.8068661093711853,
+      "very_close": 0.9773952960968018
+    }
+  },
+  "corpus": {
+    "annotation_protocol": {
+      "label_order": [
+        "different",
+        "related",
+        "close",
+        "very_close"
+      ],
+      "minimum_neighbor_recall": 0.7,
+      "minimum_trustworthiness": 0.9,
+      "mode": "fixture_relationship_by_construction",
+      "neighbor_k": 10,
+      "release_requirement": "A separate licensed corpus must be annotated from blind listening by at least two human raters before activation.",
+      "relevance_floor": "related"
+    },
+    "fingerprint": "aea18aa28d3226b20ae11e89336727f58def19be1238793a67462e1b9df7d506",
+    "id": "rebel-validation-synthetic",
+    "pair_count": 78,
+    "release_eligible": false,
+    "track_count": 13,
+    "version": "1.0.0"
+  },
+  "embedding": {
+    "audio_sha256": {
+      "ambient_core": "9817031db0bcbdc8273f05c4d9faaaca28bfed621379fcdcc979dba40e1c7ec6",
+      "ambient_core_gain": "49e3d5bb9e0e482e23f92c12dbd1e8e7d1642484450a0092a9744f7e519ef94a",
+      "ambient_granular": "d74728e1dec482797e0b3cce300de9d28874f6ee774f92a68ef3b347e6aba11e",
+      "ambient_shifted": "1bfa7caed5a3f9f1f5140b2c2017771de02e25bc2c7266ba2b6fbc6ee89cd161",
+      "experimental_chirps": "ebf3694799e28c133a867d8bc3dd54064770743657ae2bd2516d98b9d650f20a",
+      "pluck_core": "4df95353831fa6d829eafac0cf3aa25321c11fb56f86ce6f57f21a249f7f7340",
+      "pluck_core_gain": "c1cbfa40019efb62c3a219b03ccfc05df28312578853a8513668098a3bcfd715",
+      "pluck_shifted": "18dfb94f8b03dcbf9bf92f1c9bb3f70cfd2034780b1bf7607a18b10378004e4e",
+      "pulse_bright": "3ae8e445b8d496a6b5b24ea0d630808f8beb545fea4c0cca3f2ace94dc339bdd",
+      "pulse_core": "b26976a1d478a7e2bf35711cbae06baf4b7264089bc369ff8118896fdd98ff47",
+      "pulse_core_detuned": "79aa5b173c519ff708cb117c7fb17109db4f34ff77c0b5fe9e65cbb255e6e530",
+      "pulse_core_gain": "92feb2b89af30103afa7d6484e754ef10f510324a821c3423c74f3d5a88bcb74",
+      "pulse_half_time": "d3d1aa03dc268b2de1d464d7d0f308943cb0a879262014382b00a0d4e8a7a89a"
+    },
+    "checkpoint": "music_audioset_epoch_15_esc_90.14.pt",
+    "corpus_fingerprint": "aea18aa28d3226b20ae11e89336727f58def19be1238793a67462e1b9df7d506",
+    "corpus_id": "rebel-validation-synthetic",
+    "corpus_version": "1.0.0",
+    "model_name": "clap-htsat-base",
+    "model_version": "1.0",
+    "sample_rate": 48000,
+    "schema_version": 1,
+    "segment_strategy": "full_short_fixture",
+    "segments": {
+      "ambient_core": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "ambient_core_gain": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "ambient_granular": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "ambient_shifted": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "experimental_chirps": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pluck_core": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pluck_core_gain": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pluck_shifted": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pulse_bright": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pulse_core": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pulse_core_detuned": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pulse_core_gain": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      },
+      "pulse_half_time": {
+        "end_sec": 6.0,
+        "method": "full_track",
+        "rms_score": 0.0,
+        "start_sec": 0.0
+      }
+    },
+    "vector_dimensions": 512,
+    "vector_sha256": "172e45d93ba6430b65536eb7c1374ace333fe0453c1479e9b9548a3a0e71b8d1"
+  },
+  "generated_at": "2026-08-29T11:14:09.262494+00:00",
+  "pair_scores": [
+    {
+      "label": "very_close",
+      "score": 0.9773952960968018,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pulse_core_gain"
+    },
+    {
+      "label": "close",
+      "score": 0.9466310739517212,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pulse_core_detuned"
+    },
+    {
+      "label": "related",
+      "score": 0.8068661093711853,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pulse_bright"
+    },
+    {
+      "label": "related",
+      "score": 0.8884127140045166,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pulse_half_time"
+    },
+    {
+      "label": "different",
+      "score": 0.3153451681137085,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "ambient_core"
+    },
+    {
+      "label": "different",
+      "score": 0.292825311422348,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.33800405263900757,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.26833999156951904,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.6479748487472534,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.6345216631889343,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.6036943197250366,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.18361309170722961,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "close",
+      "score": 0.9268816709518433,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pulse_core_detuned"
+    },
+    {
+      "label": "related",
+      "score": 0.8121614456176758,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pulse_bright"
+    },
+    {
+      "label": "related",
+      "score": 0.8874977827072144,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pulse_half_time"
+    },
+    {
+      "label": "different",
+      "score": 0.31136614084243774,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "ambient_core"
+    },
+    {
+      "label": "different",
+      "score": 0.3092784583568573,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.34202277660369873,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.26779305934906006,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.6640072464942932,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.6647626161575317,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.6167488098144531,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.1787985861301422,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_gain",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "related",
+      "score": 0.8384961485862732,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "pulse_bright"
+    },
+    {
+      "label": "related",
+      "score": 0.7825539112091064,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "pulse_half_time"
+    },
+    {
+      "label": "different",
+      "score": 0.3015784025192261,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "ambient_core"
+    },
+    {
+      "label": "different",
+      "score": 0.26984915137290955,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.3256608247756958,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.2845974564552307,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.6461451053619385,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.637403130531311,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.6201291084289551,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.26733365654945374,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_core_detuned",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "related",
+      "score": 0.692537248134613,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "pulse_half_time"
+    },
+    {
+      "label": "different",
+      "score": 0.3046836853027344,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "ambient_core"
+    },
+    {
+      "label": "different",
+      "score": 0.2756583094596863,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.3242169916629791,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.29433873295783997,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.8045125007629395,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.7996137142181396,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.7767181396484375,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.2532603442668915,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_bright",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "different",
+      "score": 0.26907455921173096,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "ambient_core"
+    },
+    {
+      "label": "different",
+      "score": 0.2737717032432556,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.2974153757095337,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.18159127235412598,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.5889195799827576,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.5818879008293152,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.5494640469551086,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.08907961845397949,
+      "source": "fixture_recipe_v1",
+      "track_a": "pulse_half_time",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "very_close",
+      "score": 0.8823196291923523,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "ambient_core_gain"
+    },
+    {
+      "label": "close",
+      "score": 0.9680261611938477,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "related",
+      "score": 0.8581944704055786,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.4509403109550476,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.4533890187740326,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.46871015429496765,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.3534311056137085,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "close",
+      "score": 0.8971513509750366,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "ambient_shifted"
+    },
+    {
+      "label": "related",
+      "score": 0.891481876373291,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.4771084189414978,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.4800627529621124,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.5037343502044678,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.27180325984954834,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_core_gain",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "related",
+      "score": 0.8697620630264282,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_shifted",
+      "track_b": "ambient_granular"
+    },
+    {
+      "label": "different",
+      "score": 0.45371121168136597,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_shifted",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.4607125520706177,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_shifted",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.4714501202106476,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_shifted",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.35076576471328735,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_shifted",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "different",
+      "score": 0.5190900564193726,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_granular",
+      "track_b": "pluck_core"
+    },
+    {
+      "label": "different",
+      "score": 0.5226502418518066,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_granular",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "different",
+      "score": 0.551073431968689,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_granular",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.41225141286849976,
+      "source": "fixture_recipe_v1",
+      "track_a": "ambient_granular",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "very_close",
+      "score": 0.988977313041687,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_core",
+      "track_b": "pluck_core_gain"
+    },
+    {
+      "label": "close",
+      "score": 0.9507576823234558,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_core",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.2925078570842743,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_core",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "close",
+      "score": 0.9447410106658936,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_core_gain",
+      "track_b": "pluck_shifted"
+    },
+    {
+      "label": "different",
+      "score": 0.31436243653297424,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_core_gain",
+      "track_b": "experimental_chirps"
+    },
+    {
+      "label": "different",
+      "score": 0.35977795720100403,
+      "source": "fixture_recipe_v1",
+      "track_a": "pluck_shifted",
+      "track_b": "experimental_chirps"
+    }
+  ],
+  "positioning": {
+    "neighbor_candidate_count": 9,
+    "neighbor_recall": 1.0,
+    "quality_k": 6,
+    "requested_k": 10,
+    "trustworthiness": 0.8974358974358975
+  },
+  "retrieval": {
+    "aggregate": {
+      "precision_at_10": 0.2923076923076923,
+      "precision_at_5": 0.5692307692307692,
+      "recall_at_10": 1.0
+    },
+    "false_positives_at_10": [
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "experimental_chirps",
+        "rank": 1,
+        "score": 0.41225138306617737
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "experimental_chirps",
+        "rank": 2,
+        "score": 0.35977795720100403
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "pluck_core",
+        "rank": 3,
+        "score": 0.8045125007629395
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "pluck_core_gain",
+        "rank": 3,
+        "score": 0.7996136546134949
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "pluck_shifted",
+        "rank": 3,
+        "score": 0.7767181396484375
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "experimental_chirps",
+        "rank": 3,
+        "score": 0.3534311056137085
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "pulse_bright",
+        "rank": 4,
+        "score": 0.8045125007629395
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "pluck_core_gain",
+        "rank": 4,
+        "score": 0.6647626161575317
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "pluck_core",
+        "rank": 4,
+        "score": 0.6640072464942932
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "pluck_shifted",
+        "rank": 4,
+        "score": 0.6201291084289551
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "ambient_granular",
+        "rank": 4,
+        "score": 0.5510733723640442
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "ambient_core_gain",
+        "rank": 4,
+        "score": 0.5037343502044678
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "ambient_shifted",
+        "rank": 4,
+        "score": 0.4714500904083252
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "ambient_core",
+        "rank": 4,
+        "score": 0.4687102437019348
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "experimental_chirps",
+        "rank": 4,
+        "score": 0.35076576471328735
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "pulse_bright",
+        "rank": 5,
+        "score": 0.7996136546134949
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "pulse_core_gain",
+        "rank": 5,
+        "score": 0.6647626161575317
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "pluck_core",
+        "rank": 5,
+        "score": 0.6479747295379639
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "pulse_core",
+        "rank": 5,
+        "score": 0.6479747295379639
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "pulse_core_detuned",
+        "rank": 5,
+        "score": 0.6461450457572937
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "pluck_core_gain",
+        "rank": 5,
+        "score": 0.637403130531311
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "pluck_shifted",
+        "rank": 5,
+        "score": 0.6167487502098083
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "pulse_half_time",
+        "rank": 5,
+        "score": 0.5889195799827576
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "ambient_granular",
+        "rank": 5,
+        "score": 0.5226502418518066
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "ambient_core_gain",
+        "rank": 5,
+        "score": 0.4800627827644348
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "ambient_shifted",
+        "rank": 5,
+        "score": 0.46071258187294006
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "ambient_core",
+        "rank": 5,
+        "score": 0.4533890187740326
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "experimental_chirps",
+        "rank": 5,
+        "score": 0.31436240673065186
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "pulse_bright",
+        "rank": 6,
+        "score": 0.7767181396484375
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "pulse_core_gain",
+        "rank": 6,
+        "score": 0.6640072464942932
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "pluck_core",
+        "rank": 6,
+        "score": 0.6461450457572937
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "pulse_core_detuned",
+        "rank": 6,
+        "score": 0.637403130531311
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "pluck_core_gain",
+        "rank": 6,
+        "score": 0.6345217227935791
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "pulse_core",
+        "rank": 6,
+        "score": 0.6345217227935791
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "pluck_shifted",
+        "rank": 6,
+        "score": 0.6036942601203918
+      },
+      {
+        "candidate_id": "pluck_core_gain",
+        "query_id": "pulse_half_time",
+        "rank": 6,
+        "score": 0.58188796043396
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "ambient_granular",
+        "rank": 6,
+        "score": 0.5190899968147278
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "ambient_core_gain",
+        "rank": 6,
+        "score": 0.4771084487438202
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "ambient_shifted",
+        "rank": 6,
+        "score": 0.45371121168136597
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "ambient_core",
+        "rank": 6,
+        "score": 0.4509403109550476
+      },
+      {
+        "candidate_id": "pluck_core",
+        "query_id": "experimental_chirps",
+        "rank": 6,
+        "score": 0.2925078272819519
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "pulse_core_detuned",
+        "rank": 7,
+        "score": 0.6201291084289551
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "pulse_core_gain",
+        "rank": 7,
+        "score": 0.6167487502098083
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "pulse_core",
+        "rank": 7,
+        "score": 0.6036942601203918
+      },
+      {
+        "candidate_id": "pulse_half_time",
+        "query_id": "pluck_core",
+        "rank": 7,
+        "score": 0.5889195799827576
+      },
+      {
+        "candidate_id": "pulse_half_time",
+        "query_id": "pluck_core_gain",
+        "rank": 7,
+        "score": 0.58188796043396
+      },
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "pluck_shifted",
+        "rank": 7,
+        "score": 0.5510733723640442
+      },
+      {
+        "candidate_id": "pluck_shifted",
+        "query_id": "pulse_half_time",
+        "rank": 7,
+        "score": 0.5494641065597534
+      },
+      {
+        "candidate_id": "experimental_chirps",
+        "query_id": "ambient_granular",
+        "rank": 7,
+        "score": 0.41225138306617737
+      },
+      {
+        "candidate_id": "experimental_chirps",
+        "query_id": "ambient_core",
+        "rank": 7,
+        "score": 0.3534311056137085
+      },
+      {
+        "candidate_id": "experimental_chirps",
+        "query_id": "ambient_shifted",
+        "rank": 7,
+        "score": 0.35076576471328735
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "ambient_core_gain",
+        "rank": 7,
+        "score": 0.3092784583568573
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "experimental_chirps",
+        "rank": 7,
+        "score": 0.27180325984954834
+      },
+      {
+        "candidate_id": "pulse_half_time",
+        "query_id": "pluck_shifted",
+        "rank": 8,
+        "score": 0.5494641065597534
+      },
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "pluck_core_gain",
+        "rank": 8,
+        "score": 0.5226502418518066
+      },
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "pluck_core",
+        "rank": 8,
+        "score": 0.5190899968147278
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "ambient_shifted",
+        "rank": 8,
+        "score": 0.34202277660369873
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pulse_core_gain",
+        "rank": 8,
+        "score": 0.34202277660369873
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pulse_core",
+        "rank": 8,
+        "score": 0.33800405263900757
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pulse_core_detuned",
+        "rank": 8,
+        "score": 0.3256608545780182
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pulse_bright",
+        "rank": 8,
+        "score": 0.32421690225601196
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "ambient_core",
+        "rank": 8,
+        "score": 0.3153451681137085
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pulse_half_time",
+        "rank": 8,
+        "score": 0.2974153757095337
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "ambient_granular",
+        "rank": 8,
+        "score": 0.29433873295783997
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "ambient_core_gain",
+        "rank": 8,
+        "score": 0.292825311422348
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "experimental_chirps",
+        "rank": 8,
+        "score": 0.26733365654945374
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pluck_shifted",
+        "rank": 9,
+        "score": 0.5037343502044678
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pluck_core_gain",
+        "rank": 9,
+        "score": 0.4800627827644348
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pluck_core",
+        "rank": 9,
+        "score": 0.4771084487438202
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "ambient_shifted",
+        "rank": 9,
+        "score": 0.33800405263900757
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "pulse_core",
+        "rank": 9,
+        "score": 0.3153451681137085
+      },
+      {
+        "candidate_id": "pulse_core_gain",
+        "query_id": "ambient_core",
+        "rank": 9,
+        "score": 0.31136617064476013
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "pulse_core_gain",
+        "rank": 9,
+        "score": 0.31136617064476013
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "pulse_bright",
+        "rank": 9,
+        "score": 0.3046836256980896
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "pulse_core_detuned",
+        "rank": 9,
+        "score": 0.3015784025192261
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "ambient_granular",
+        "rank": 9,
+        "score": 0.2845975160598755
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "ambient_core_gain",
+        "rank": 9,
+        "score": 0.2756583094596863
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pulse_half_time",
+        "rank": 9,
+        "score": 0.2737717032432556
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "experimental_chirps",
+        "rank": 9,
+        "score": 0.2532603144645691
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pluck_shifted",
+        "rank": 10,
+        "score": 0.4714500904083252
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pluck_core_gain",
+        "rank": 10,
+        "score": 0.46071258187294006
+      },
+      {
+        "candidate_id": "ambient_shifted",
+        "query_id": "pluck_core",
+        "rank": 10,
+        "score": 0.45371121168136597
+      },
+      {
+        "candidate_id": "pulse_core_detuned",
+        "query_id": "ambient_shifted",
+        "rank": 10,
+        "score": 0.3256608545780182
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pulse_core_gain",
+        "rank": 10,
+        "score": 0.3092784583568573
+      },
+      {
+        "candidate_id": "pulse_bright",
+        "query_id": "ambient_core",
+        "rank": 10,
+        "score": 0.3046836256980896
+      },
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "pulse_bright",
+        "rank": 10,
+        "score": 0.29433873295783997
+      },
+      {
+        "candidate_id": "ambient_core_gain",
+        "query_id": "pulse_core",
+        "rank": 10,
+        "score": 0.292825311422348
+      },
+      {
+        "candidate_id": "ambient_granular",
+        "query_id": "pulse_core_detuned",
+        "rank": 10,
+        "score": 0.2845975160598755
+      },
+      {
+        "candidate_id": "pulse_half_time",
+        "query_id": "ambient_core_gain",
+        "rank": 10,
+        "score": 0.2737717032432556
+      },
+      {
+        "candidate_id": "ambient_core",
+        "query_id": "pulse_half_time",
+        "rank": 10,
+        "score": 0.26907455921173096
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "ambient_granular",
+        "rank": 10,
+        "score": 0.26833999156951904
+      },
+      {
+        "candidate_id": "pulse_core",
+        "query_id": "experimental_chirps",
+        "rank": 10,
+        "score": 0.183613121509552
+      }
+    ],
+    "per_query": [
+      {
+        "precision_at_10": 0.4,
+        "precision_at_5": 0.8,
+        "recall_at_10": 1.0,
+        "relevant_count": 4,
+        "track_id": "pulse_core"
+      },
+      {
+        "precision_at_10": 0.4,
+        "precision_at_5": 0.8,
+        "recall_at_10": 1.0,
+        "relevant_count": 4,
+        "track_id": "pulse_core_gain"
+      },
+      {
+        "precision_at_10": 0.4,
+        "precision_at_5": 0.8,
+        "recall_at_10": 1.0,
+        "relevant_count": 4,
+        "track_id": "pulse_core_detuned"
+      },
+      {
+        "precision_at_10": 0.4,
+        "precision_at_5": 0.6,
+        "recall_at_10": 1.0,
+        "relevant_count": 4,
+        "track_id": "pulse_bright"
+      },
+      {
+        "precision_at_10": 0.4,
+        "precision_at_5": 0.8,
+        "recall_at_10": 1.0,
+        "relevant_count": 4,
+        "track_id": "pulse_half_time"
+      },
+      {
+        "precision_at_10": 0.3,
+        "precision_at_5": 0.6,
+        "recall_at_10": 1.0,
+        "relevant_count": 3,
+        "track_id": "ambient_core"
+      },
+      {
+        "precision_at_10": 0.3,
+        "precision_at_5": 0.6,
+        "recall_at_10": 1.0,
+        "relevant_count": 3,
+        "track_id": "ambient_core_gain"
+      },
+      {
+        "precision_at_10": 0.3,
+        "precision_at_5": 0.6,
+        "recall_at_10": 1.0,
+        "relevant_count": 3,
+        "track_id": "ambient_shifted"
+      },
+      {
+        "precision_at_10": 0.3,
+        "precision_at_5": 0.6,
+        "recall_at_10": 1.0,
+        "relevant_count": 3,
+        "track_id": "ambient_granular"
+      },
+      {
+        "precision_at_10": 0.2,
+        "precision_at_5": 0.4,
+        "recall_at_10": 1.0,
+        "relevant_count": 2,
+        "track_id": "pluck_core"
+      },
+      {
+        "precision_at_10": 0.2,
+        "precision_at_5": 0.4,
+        "recall_at_10": 1.0,
+        "relevant_count": 2,
+        "track_id": "pluck_core_gain"
+      },
+      {
+        "precision_at_10": 0.2,
+        "precision_at_5": 0.4,
+        "recall_at_10": 1.0,
+        "relevant_count": 2,
+        "track_id": "pluck_shifted"
+      },
+      {
+        "precision_at_10": 0.0,
+        "precision_at_5": 0.0,
+        "recall_at_10": 1.0,
+        "relevant_count": 0,
+        "track_id": "experimental_chirps"
+      }
+    ]
+  },
+  "schema_version": 1,
+  "score_distributions": {
+    "close": {
+      "count": 6,
+      "max": 0.9680261611938477,
+      "mean": 0.9390314916769663,
+      "median": 0.9456860423088074,
+      "min": 0.8971513509750366,
+      "p25": 0.9313465058803558,
+      "p75": 0.9497260302305222
+    },
+    "different": {
+      "count": 59,
+      "max": 0.8045125007629395,
+      "mean": 0.4207378282385357,
+      "median": 0.3534311056137085,
+      "min": 0.08907961845397949,
+      "p25": 0.29266658425331116,
+      "p75": 0.5502687394618988
+    },
+    "related": {
+      "count": 10,
+      "max": 0.891481876373291,
+      "mean": 0.8327963769435882,
+      "median": 0.8483453094959259,
+      "min": 0.692537248134613,
+      "p25": 0.8081899434328079,
+      "p75": 0.8830638527870178
+    },
+    "very_close": {
+      "count": 3,
+      "max": 0.988977313041687,
+      "mean": 0.9495640794436137,
+      "median": 0.9773952960968018,
+      "min": 0.8823196291923523,
+      "p25": 0.929857462644577,
+      "p75": 0.9831863045692444
+    }
+  },
+  "targets": {
+    "minimum_neighbor_recall": 0.7,
+    "minimum_trustworthiness": 0.9
+  }
+}

@@ -10,14 +10,16 @@ from pathlib import Path
 from typing import Optional
 
 from yt_dlp import YoutubeDL
+import yt_dlp
 from yt_dlp.utils import DownloadError
 
 from .base import PreviewAdapter, PreviewAdapterError, PreviewFetchResult
 from .youtube_utils import extract_video_id
+from .cobalt_client import request_preview_url, CobaltAPIError
 
 logger = logging.getLogger(__name__)
 
-YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "best")
+YTDLP_FORMAT = os.getenv("YTDLP_FORMAT", "bestaudio/best")
 YTDLP_AUDIO_FORMAT = os.getenv("YTDLP_AUDIO_FORMAT", "mp3")
 YTDLP_COOKIES_PATH = os.getenv("YTDLP_COOKIES_PATH")
 YTDLP_COOKIES_FROM_BROWSER = os.getenv("YTDLP_COOKIES_FROM_BROWSER")
@@ -27,6 +29,14 @@ YTDLP_IMPERSONATE = os.getenv("YTDLP_IMPERSONATE")
 YTDLP_PLAYER_CLIENTS = os.getenv("YTDLP_PLAYER_CLIENTS", "android")
 YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
 YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
+YOUTUBE_USE_COBALT = os.getenv("YOUTUBE_USE_COBALT", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+logger.info(
+    "yt-dlp %s | format=%s | player_clients=%s",
+    getattr(yt_dlp, "version", None) and yt_dlp.version.__version__,
+    YTDLP_FORMAT,
+    YTDLP_PLAYER_CLIENTS,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FALLBACK_FORMATS = ["bestaudio/best", "best"]
@@ -56,14 +66,65 @@ def _run_yt_dlp(target_url: str, ydl_opts: dict) -> dict:
     except DownloadError as exc:
         message = str(exc)
         if "Requested format is not available" in message:
+            def _attempt(retry_opts: dict, label: str) -> Optional[dict]:
+                try:
+                    with YoutubeDL(retry_opts) as ydl:
+                        return ydl.extract_info(target_url, download=True)
+                except DownloadError as retry_exc:
+                    logger.warning("yt-dlp retry failed (%s): %s", label, retry_exc)
+                    return None
+
             for fallback in FALLBACK_FORMATS:
                 if ydl_opts.get("format") == fallback:
                     continue
                 logger.warning("yt-dlp format unavailable, retrying with %s", fallback)
                 retry_opts = dict(ydl_opts)
                 retry_opts["format"] = fallback
-                with YoutubeDL(retry_opts) as ydl:
-                    return ydl.extract_info(target_url, download=True)
+                result = _attempt(retry_opts, f"format={fallback}")
+                if result:
+                    return result
+
+            for fallback in FALLBACK_FORMATS:
+                logger.warning("yt-dlp format unavailable, retrying without player_client using %s", fallback)
+                retry_opts = dict(ydl_opts)
+                retry_opts["format"] = fallback
+                retry_opts.pop("extractor_args", None)
+                result = _attempt(retry_opts, f"no player_client, format={fallback}")
+                if result:
+                    return result
+
+            logger.warning("yt-dlp format unavailable, retrying with automatic format selection")
+            retry_opts = dict(ydl_opts)
+            retry_opts.pop("format", None)
+            retry_opts.pop("extractor_args", None)
+            result = _attempt(retry_opts, "auto format")
+            if result:
+                return result
+            logger.warning("yt-dlp format unavailable, attempting format-id selection")
+            probe_opts = dict(ydl_opts)
+            probe_opts.pop("format", None)
+            probe_opts.pop("extractor_args", None)
+            probe_opts["skip_download"] = True
+            try:
+                with YoutubeDL(probe_opts) as ydl:
+                    info = ydl.extract_info(target_url, download=False)
+                formats = info.get("formats") or []
+                audio_formats = [
+                    fmt for fmt in formats
+                    if fmt.get("vcodec") == "none" and fmt.get("acodec") not in (None, "none")
+                ]
+                if audio_formats:
+                    audio_formats.sort(key=lambda f: (f.get("abr") or 0, f.get("filesize") or 0), reverse=True)
+                    best_audio_id = audio_formats[0].get("format_id")
+                    if best_audio_id:
+                        retry_opts = dict(ydl_opts)
+                        retry_opts["format"] = best_audio_id
+                        retry_opts.pop("extractor_args", None)
+                        result = _attempt(retry_opts, f"format_id={best_audio_id}")
+                        if result:
+                            return result
+            except Exception as probe_exc:
+                logger.warning("yt-dlp probe failed: %s", probe_exc)
         raise
 
 class YouTubePreviewAdapter(PreviewAdapter):
@@ -80,6 +141,19 @@ class YouTubePreviewAdapter(PreviewAdapter):
         video_id = extract_video_id(target_url)
         if not video_id:
             raise PreviewAdapterError("Unable to extract video id from provided YouTube URL")
+
+        if YOUTUBE_USE_COBALT:
+            try:
+                cobalt_result = request_preview_url(target_url)
+                return PreviewFetchResult(
+                    download_url=cobalt_result["download_url"],
+                    headers={},
+                    provider_track_id=provider_track_id or video_id,
+                    file_extension=cobalt_result["file_extension"] or ".mp3",
+                    local_file_path=None,
+                )
+            except CobaltAPIError as exc:
+                logger.warning("Cobalt API failed, falling back to yt-dlp: %s", exc)
 
         download_dir = Path(tempfile.mkdtemp(prefix="yt-dlp-"))
         output_template = str(download_dir / "%(id)s.%(ext)s")
@@ -99,15 +173,16 @@ class YouTubePreviewAdapter(PreviewAdapter):
                     "preferredcodec": YTDLP_AUDIO_FORMAT,
                 }
             ]
-        if YTDLP_COOKIES_PATH:
-            cookie_path = _resolve_cookie_path(YTDLP_COOKIES_PATH)
-            if not cookie_path.exists():
-                raise PreviewAdapterError(f"yt-dlp cookies file not found: {cookie_path}")
-            ydl_opts["cookiefile"] = str(cookie_path)
-        elif YTDLP_COOKIES_FROM_BROWSER:
+        if YTDLP_COOKIES_FROM_BROWSER:
             cookies_from_browser = _parse_cookies_from_browser(YTDLP_COOKIES_FROM_BROWSER)
             if cookies_from_browser:
                 ydl_opts["cookiesfrombrowser"] = cookies_from_browser
+        elif YTDLP_COOKIES_PATH:
+            cookie_path = _resolve_cookie_path(YTDLP_COOKIES_PATH)
+            if not cookie_path.exists():
+                logger.warning("yt-dlp cookies file not found: %s (continuing without cookies)", cookie_path)
+            else:
+                ydl_opts["cookiefile"] = str(cookie_path)
         if YTDLP_PROXY:
             ydl_opts["proxy"] = YTDLP_PROXY
         if YTDLP_USER_AGENT:

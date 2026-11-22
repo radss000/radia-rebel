@@ -1,0 +1,177 @@
+## Full Local E2E Testing Guide — REBEL Music Platform
+
+The project has **4 layers**: Infrastructure → Backend API → Music Pipeline → Frontend. Start them in this order.
+
+---
+
+### Step 1: Start Infrastructure (Docker)
+
+```bash
+docker compose up -d
+```
+
+This starts 4 services:
+| Service | Port | Purpose |
+|---------|------|---------|
+| PostgreSQL | 5432 | Track/audio metadata, analysis jobs |
+| Qdrant | 6333 | CLAP embedding vector store |
+| MongoDB | 27017 | Users, auth data |
+| Redis | 6379 | Job queue (RQ) + caching |
+
+Verify all are healthy:
+```bash
+docker compose ps
+```
+
+---
+
+### Step 2: Initialize the PostgreSQL Database
+
+```bash
+cd music-pipeline
+pip install -r requirements.txt
+python database/init_db.py
+```
+
+This creates the `rebel_music` database, runs `schema.sql` (tracks, audio_assets, analysis_jobs, sonic_map_versions, etc.), and creates the `music_embeddings` collection in Qdrant.
+
+---
+
+### Step 3: Configure Environment Variables
+
+**Root `.env`** (copy from `.env.example` if missing):
+```bash
+cp .env.example .env
+```
+Key values to set:
+- `MONGO_URI=mongodb://localhost:27017/rebel`
+- `PIPELINE_API_URL=http://localhost:8000`
+- `REDIS_URL=redis://localhost:6379/0`
+- `QDRANT_HOST=localhost` / `QDRANT_PORT=6333`
+- `JWT_SECRET=<any-secret-string>`
+- `MAGIC_PUBLISHABLE_KEY` / `MAGIC_SECRET_KEY` (for auth — use test keys)
+
+**Pipeline `music-pipeline/.env`**:
+```bash
+cd music-pipeline
+cp .env.example .env
+```
+Key values:
+- `AUDIO_STORAGE_MODE=local` (for local testing, avoids GCS/S3)
+- `CLAP_DEVICE=cpu` (unless you have a GPU)
+- `CLAP_CHECKPOINT_PATH=checkpoints/music_audioset_epoch_15_esc_90.14.pt`
+
+Download the CLAP checkpoint if you don't have it:
+```bash
+python scripts/download_clap_checkpoint.py
+```
+
+---
+
+### Step 4: Start the Node.js Backend API
+
+From the project root:
+```bash
+npm install
+node server.js
+```
+Runs on **http://localhost:5001**. Handles user auth (Magic.link + JWT), track uploads, proofs, and proxies pipeline requests.
+
+---
+
+### Step 5: Start the Python Music Pipeline API
+
+```bash
+cd music-pipeline
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+Runs on **http://localhost:8000**. Endpoints: `/api/tracks`, `/api/tracks/ingest`, `/api/tracks/search-ingest`, `/api/tracks/sonic-map`, `/api/jobs/enqueue`, `/api/tracks/{id}/similar`.
+
+---
+
+### Step 6: Start the RQ Worker (Background Jobs)
+
+In a **separate terminal**:
+```bash
+cd music-pipeline
+python -m jobs.worker
+```
+This processes the job queue: `preview_fetch` → `audio_features` → `embedding` → `position`. The worker pre-loads the CLAP model on startup (may take 30-60s).
+
+Optionally start the audio asset provenance worker:
+```bash
+python processing/audio_asset_worker.py
+```
+
+---
+
+### Step 7: Start the React Frontend
+
+```bash
+cd frontend
+npm install
+REACT_APP_API_URL=http://localhost:5001 npm start
+```
+Runs on **http://localhost:3000**.
+
+---
+
+### Step 8: E2E Test Flow
+
+1. **Open** http://localhost:3000
+2. **Login** via Magic.link (or bypass auth for testing)
+3. **Upload a track** or use the search-ingest endpoint:
+   ```bash
+   curl -X POST http://localhost:8000/api/tracks/search-ingest \
+     -H "Content-Type: application/json" \
+     -d '{"artist": "Aphex Twin", "title": "Xtal"}'
+   ```
+4. **Watch the pipeline**: The search-ingest endpoint enqueues 4 jobs (preview_fetch → audio_features → embedding → position). Monitor in the worker terminal.
+5. **View the Sonic Map** at http://localhost:3000/sonic-map — tracks appear as 3D spheres positioned by audio similarity.
+6. **Check similar tracks**: `GET http://localhost:8000/api/tracks/{id}/similar`
+
+---
+
+### Quick Health Checks
+
+```bash
+# Node API
+curl http://localhost:5001/api/health
+
+# Pipeline API
+curl http://localhost:8000/
+
+# PostgreSQL
+psql -h localhost -U rebel -d rebel_music -c "SELECT count(*) FROM tracks;"
+
+# Redis
+redis-cli ping
+
+# Qdrant
+curl http://localhost:6333/collections
+
+# MongoDB
+mongosh --eval "db.stats()" mongodb://localhost:27017/rebel
+```
+
+---
+
+### Run Pipeline Tests
+
+```bash
+cd music-pipeline
+pytest tests/ -v
+```
+Includes unit, integration, and e2e tests. The e2e tests (`test_phase6_e2e.py`) exercise the full pipeline flow.
+
+---
+
+### Common Issues
+
+| Problem | Fix |
+|---------|-----|
+| CLAP model OOM | Set `CLAP_DEVICE=cpu` in pipeline `.env` |
+| Redis connection refused | Ensure `docker compose up` is running |
+| YouTube preview fetch fails | Set `YTDLP_COOKIES_PATH` or use `YTDLP_COOKIES_FROM_BROWSER=chrome` |
+| Qdrant "collection not found" | Re-run `python database/init_db.py` |
+| CORS errors | Pipeline API already allows `localhost:3000` and `localhost:3001` |

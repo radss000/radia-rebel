@@ -1,0 +1,23 @@
+{
+  "activation_blockers": [
+    "trustworthiness",
+    "release_eligible_corpus",
+    "release_ready"
+  ],
+  "active": false,
+  "calibration_id": "7f882c33dd1f68ee",
+  "corpus_fingerprint": "aea18aa28d3226b20ae11e89336727f58def19be1238793a67462e1b9df7d506",
+  "corpus_id": "rebel-validation-synthetic",
+  "corpus_version": "1.0.0",
+  "generated_at": "2026-08-29T11:14:09.262494+00:00",
+  "method": "nested_f1_with_monotonic_constraints_v1",
+  "model_name": "clap-htsat-base",
+  "model_version": "1.0",
+  "schema_version": 1,
+  "thresholds": {
+    "close": 0.8971513509750366,
+    "related": 0.8068661093711853,
+    "very_close": 0.9773952960968018
+  },
+  "vector_dimensions": 512
+}

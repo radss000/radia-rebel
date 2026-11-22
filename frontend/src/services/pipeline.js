@@ -88,6 +88,25 @@ export async function getPipelineTrackDetail(trackId) {
 }
 
 /**
+ * Retrieve CLAP nearest neighbors through the Node API proxy.
+ */
+export async function getSimilarTracks(trackId, options = {}) {
+  if (!trackId && trackId !== 0) {
+    throw new Error('trackId is required');
+  }
+
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 10),
+    offset: String(options.offset ?? 0),
+    min_score: String(options.minScore ?? 0)
+  });
+
+  return apiRequest(`/api/tracks/${trackId}/similar?${params.toString()}`, {
+    method: 'GET'
+  });
+}
+
+/**
  * Ingest a track preview into the pipeline to ensure an audio asset exists.
  */
 export async function ingestPipelineTrack(payload) {
@@ -130,7 +149,16 @@ export async function searchAndIngestTrack(payload) {
  */
 export async function fetchPipelineSonicMap(limit = 1000) {
   const params = new URLSearchParams({ limit: String(limit) });
-  return pipelineRequest(`/api/tracks/sonic-map?${params.toString()}`, {
+  return apiRequest(`/api/tracks/sonic-map?${params.toString()}`, {
+    method: 'GET'
+  });
+}
+
+/**
+ * Fetch provenance and quality metrics for the currently published Sonic Map.
+ */
+export async function getSonicMapVersion() {
+  return apiRequest('/api/sonic-map/version', {
     method: 'GET'
   });
 }

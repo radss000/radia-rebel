@@ -55,7 +55,13 @@ app.use(responseMiddleware);
 // ═══════════════════════════════════════════════════════════════
 app.get('/api/tracks/sonic-map', async (req, res) => {
   try {
-    const response = await fetchFn(`${pipelineApiUrl.replace(/\/$/, '')}/api/tracks/sonic-map`);
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 5000)
+      : 1000;
+    const response = await fetchFn(
+      `${pipelineApiUrl.replace(/\/$/, '')}/api/tracks/sonic-map?limit=${limit}`
+    );
 
     if (!response.ok) {
       throw new Error(`Python API returned ${response.status}`);
@@ -70,6 +76,66 @@ app.get('/api/tracks/sonic-map', async (req, res) => {
       error: 'Failed to fetch tracks from Python API',
       message: error.message,
       hint: `Make sure Python API is running on ${pipelineApiUrl}`
+    });
+  }
+});
+
+app.get('/api/tracks/:id/similar', async (req, res) => {
+  try {
+    const params = new URLSearchParams();
+    ['limit', 'offset', 'min_score'].forEach(key => {
+      if (req.query[key] !== undefined) {
+        params.set(key, String(req.query[key]));
+      }
+    });
+    const query = params.toString();
+    const endpoint = `${pipelineApiUrl.replace(/\/$/, '')}/api/tracks/${encodeURIComponent(req.params.id)}/similar${query ? `?${query}` : ''}`;
+    const response = await fetchFn(endpoint);
+    const bodyText = await response.text();
+    let data;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch (err) {
+      data = { detail: bodyText };
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Similar tracks proxy error:', error.message);
+    res.status(502).json({
+      error: 'Failed to fetch similar tracks',
+      message: error.message,
+      hint: `Make sure Python API and Qdrant are running at ${pipelineApiUrl}`
+    });
+  }
+});
+
+app.get('/api/sonic-map/version', async (req, res) => {
+  try {
+    const response = await fetchFn(`${pipelineApiUrl.replace(/\/$/, '')}/api/sonic-map/version`);
+    const bodyText = await response.text();
+    let data;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch (err) {
+      data = { detail: bodyText };
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Sonic Map version proxy error:', error.message);
+    res.status(502).json({
+      error: 'Failed to fetch Sonic Map version',
+      message: error.message,
+      hint: `Make sure Python API and PostgreSQL are running at ${pipelineApiUrl}`
     });
   }
 });

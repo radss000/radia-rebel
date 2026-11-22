@@ -39,7 +39,7 @@ $$ LANGUAGE plpgsql;
 -- ============================================================
 -- TRACKS TABLE
 -- ============================================================
-CREATE TABLE tracks (
+CREATE TABLE IF NOT EXISTS tracks (
     id SERIAL PRIMARY KEY,
     
     -- Basic metadata
@@ -95,6 +95,10 @@ CREATE TABLE tracks (
     position_x FLOAT,
     position_y FLOAT,
     position_z FLOAT,
+    position_method VARCHAR,
+    position_version_id UUID,
+    positioned_at TIMESTAMPTZ,
+    position_quality JSONB DEFAULT '{}'::jsonb,
     
     -- Visual attributes (for 3D rendering)
     color_r FLOAT DEFAULT 0.7,
@@ -114,17 +118,17 @@ CREATE TABLE tracks (
 );
 
 -- Indexes for fast queries
-CREATE INDEX idx_tracks_artist ON tracks(artist);
-CREATE INDEX idx_tracks_genre ON tracks(genre);
-CREATE INDEX idx_tracks_year ON tracks(year);
-CREATE INDEX idx_tracks_label ON tracks(label);
-CREATE INDEX idx_tracks_bpm ON tracks(bpm);
-CREATE INDEX idx_tracks_musicbrainz ON tracks(musicbrainz_id);
-CREATE INDEX idx_tracks_spotify ON tracks(spotify_id);
-CREATE INDEX idx_tracks_created ON tracks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist);
+CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks(genre);
+CREATE INDEX IF NOT EXISTS idx_tracks_year ON tracks(year);
+CREATE INDEX IF NOT EXISTS idx_tracks_label ON tracks(label);
+CREATE INDEX IF NOT EXISTS idx_tracks_bpm ON tracks(bpm);
+CREATE INDEX IF NOT EXISTS idx_tracks_musicbrainz ON tracks(musicbrainz_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_spotify ON tracks(spotify_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_created ON tracks(created_at DESC);
 
 -- Full-text search index
-CREATE INDEX idx_tracks_search ON tracks USING gin(
+CREATE INDEX IF NOT EXISTS idx_tracks_search ON tracks USING gin(
     to_tsvector('english', 
         coalesce(title, '') || ' ' || 
         coalesce(artist, '') || ' ' || 
@@ -133,9 +137,67 @@ CREATE INDEX idx_tracks_search ON tracks USING gin(
 );
 
 -- ============================================================
+-- VERSIONED SONIC MAP PUBLICATION
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sonic_map_versions (
+    id UUID PRIMARY KEY,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('staging', 'published', 'rejected', 'superseded')),
+    method VARCHAR(50) NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    model_version VARCHAR(50),
+    vector_dimensions INTEGER NOT NULL,
+    track_count INTEGER NOT NULL,
+    umap_params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+    catalog_fingerprint VARCHAR(64) NOT NULL,
+    failure_reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_sonic_map_versions_status ON sonic_map_versions(status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sonic_map_single_published
+    ON sonic_map_versions ((status)) WHERE status = 'published';
+-- Add columns that may be missing from older tracks tables
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_version_id') THEN
+        ALTER TABLE tracks ADD COLUMN position_version_id UUID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_method') THEN
+        ALTER TABLE tracks ADD COLUMN position_method VARCHAR;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'positioned_at') THEN
+        ALTER TABLE tracks ADD COLUMN positioned_at TIMESTAMPTZ;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_quality') THEN
+        ALTER TABLE tracks ADD COLUMN position_quality JSONB DEFAULT '{}'::jsonb;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_x') THEN
+        ALTER TABLE tracks ADD COLUMN position_x FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_y') THEN
+        ALTER TABLE tracks ADD COLUMN position_y FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tracks' AND column_name = 'position_z') THEN
+        ALTER TABLE tracks ADD COLUMN position_z FLOAT;
+    END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS idx_tracks_position_version ON tracks(position_version_id);
+
+CREATE TABLE IF NOT EXISTS sonic_map_positions_staging (
+    version_id UUID NOT NULL REFERENCES sonic_map_versions(id) ON DELETE CASCADE,
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position_x FLOAT NOT NULL,
+    position_y FLOAT NOT NULL,
+    position_z FLOAT NOT NULL,
+    PRIMARY KEY (version_id, track_id)
+);
+
+-- ============================================================
 -- AUDIO ASSETS TABLE
 -- ============================================================
-CREATE TABLE audio_assets (
+CREATE TABLE IF NOT EXISTS audio_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
     provider_type provider_type_enum NOT NULL,
@@ -165,19 +227,23 @@ CREATE TABLE audio_assets (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE UNIQUE INDEX idx_audio_assets_provider_track ON audio_assets(provider_type, provider_track_id);
-CREATE INDEX idx_audio_assets_storage_checksum ON audio_assets(storage_checksum) WHERE storage_checksum IS NOT NULL;
-CREATE INDEX idx_audio_assets_fetch_status ON audio_assets(fetch_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audio_assets_provider_track ON audio_assets(provider_type, provider_track_id);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_storage_checksum ON audio_assets(storage_checksum) WHERE storage_checksum IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audio_assets_fetch_status ON audio_assets(fetch_status);
 
-CREATE TRIGGER set_audio_assets_updated_at
-    BEFORE UPDATE ON audio_assets
-    FOR EACH ROW
-    EXECUTE FUNCTION trigger_set_timestamp();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_audio_assets_updated_at') THEN
+        CREATE TRIGGER set_audio_assets_updated_at
+            BEFORE UPDATE ON audio_assets
+            FOR EACH ROW
+            EXECUTE FUNCTION trigger_set_timestamp();
+    END IF;
+END$$;
 
 -- ============================================================
 -- ANALYSIS JOBS TABLE
 -- ============================================================
-CREATE TABLE analysis_jobs (
+CREATE TABLE IF NOT EXISTS analysis_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
     audio_asset_id UUID,
@@ -198,27 +264,36 @@ CREATE TABLE analysis_jobs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_analysis_jobs_status ON analysis_jobs(status, job_type, priority);
-CREATE INDEX idx_analysis_jobs_track ON analysis_jobs(track_id);
-CREATE INDEX idx_analysis_jobs_asset ON analysis_jobs(audio_asset_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status, job_type, priority);
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_track ON analysis_jobs(track_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_asset ON analysis_jobs(audio_asset_id);
 
-CREATE TRIGGER set_analysis_jobs_updated_at
-    BEFORE UPDATE ON analysis_jobs
-    FOR EACH ROW
-    EXECUTE FUNCTION trigger_set_timestamp();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_analysis_jobs_updated_at') THEN
+        CREATE TRIGGER set_analysis_jobs_updated_at
+            BEFORE UPDATE ON analysis_jobs
+            FOR EACH ROW
+            EXECUTE FUNCTION trigger_set_timestamp();
+    END IF;
+END$$;
 
-ALTER TABLE audio_assets
-    ADD CONSTRAINT audio_assets_ingestion_job_fk
-    FOREIGN KEY (ingestion_job_id) REFERENCES analysis_jobs(id) ON DELETE SET NULL;
-
-ALTER TABLE analysis_jobs
-    ADD CONSTRAINT analysis_jobs_asset_fk
-    FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE SET NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'audio_assets_ingestion_job_fk') THEN
+        ALTER TABLE audio_assets
+            ADD CONSTRAINT audio_assets_ingestion_job_fk
+            FOREIGN KEY (ingestion_job_id) REFERENCES analysis_jobs(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'analysis_jobs_asset_fk') THEN
+        ALTER TABLE analysis_jobs
+            ADD CONSTRAINT analysis_jobs_asset_fk
+            FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE SET NULL;
+    END IF;
+END$$;
 
 -- ============================================================
 -- TRACK LINKS TABLE
 -- ============================================================
-CREATE TABLE track_links (
+CREATE TABLE IF NOT EXISTS track_links (
     id SERIAL PRIMARY KEY,
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
     
@@ -230,13 +305,13 @@ CREATE TABLE track_links (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_track_links_track ON track_links(track_id);
-CREATE INDEX idx_track_links_platform ON track_links(platform);
+CREATE INDEX IF NOT EXISTS idx_track_links_track ON track_links(track_id);
+CREATE INDEX IF NOT EXISTS idx_track_links_platform ON track_links(platform);
 
 -- ============================================================
 -- ARTISTS TABLE (normalized)
 -- ============================================================
-CREATE TABLE artists (
+CREATE TABLE IF NOT EXISTS artists (
     id SERIAL PRIMARY KEY,
     name VARCHAR(500) NOT NULL UNIQUE,
     
@@ -257,12 +332,12 @@ CREATE TABLE artists (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_artists_name ON artists(name);
+CREATE INDEX IF NOT EXISTS idx_artists_name ON artists(name);
 
 -- ============================================================
 -- LABELS TABLE
 -- ============================================================
-CREATE TABLE labels (
+CREATE TABLE IF NOT EXISTS labels (
     id SERIAL PRIMARY KEY,
     name VARCHAR(300) NOT NULL UNIQUE,
     
@@ -282,12 +357,12 @@ CREATE TABLE labels (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_labels_name ON labels(name);
+CREATE INDEX IF NOT EXISTS idx_labels_name ON labels(name);
 
 -- ============================================================
 -- USER FAVORITES TABLE (linking to MongoDB users)
 -- ============================================================
-CREATE TABLE user_favorites (
+CREATE TABLE IF NOT EXISTS user_favorites (
     id SERIAL PRIMARY KEY,
     
     -- MongoDB user ID (stored as string)
@@ -300,13 +375,13 @@ CREATE TABLE user_favorites (
     UNIQUE(mongodb_user_id, track_id)
 );
 
-CREATE INDEX idx_favorites_user ON user_favorites(mongodb_user_id);
-CREATE INDEX idx_favorites_track ON user_favorites(track_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(mongodb_user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_track ON user_favorites(track_id);
 
 -- ============================================================
 -- PROCESSING QUEUE TABLE
 -- ============================================================
-CREATE TABLE processing_queue (
+CREATE TABLE IF NOT EXISTS processing_queue (
     id SERIAL PRIMARY KEY,
     track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
     
@@ -323,13 +398,13 @@ CREATE TABLE processing_queue (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_queue_status ON processing_queue(status, priority DESC);
-CREATE INDEX idx_queue_track ON processing_queue(track_id);
+CREATE INDEX IF NOT EXISTS idx_queue_status ON processing_queue(status, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_queue_track ON processing_queue(track_id);
 
 -- ============================================================
 -- EMBEDDING METADATA TABLE
 -- ============================================================
-CREATE TABLE embeddings (
+CREATE TABLE IF NOT EXISTS embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
     
@@ -343,12 +418,12 @@ CREATE TABLE embeddings (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_embeddings_track ON embeddings(track_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_track ON embeddings(track_id);
 
 -- ============================================================
 -- CRAWL HISTORY TABLE
 -- ============================================================
-CREATE TABLE crawl_history (
+CREATE TABLE IF NOT EXISTS crawl_history (
     id SERIAL PRIMARY KEY,
     
     source VARCHAR(50) NOT NULL,  -- 'musicbrainz', 'discogs', 'bandcamp'
@@ -376,18 +451,23 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_tracks_updated_at BEFORE UPDATE ON tracks
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_artists_updated_at BEFORE UPDATE ON artists
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_tracks_updated_at') THEN
+        CREATE TRIGGER update_tracks_updated_at BEFORE UPDATE ON tracks
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_artists_updated_at') THEN
+        CREATE TRIGGER update_artists_updated_at BEFORE UPDATE ON artists
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
 
 -- ============================================================
 -- VIEWS
 -- ============================================================
 
 -- View: Tracks with full metadata
-CREATE VIEW tracks_full AS
+CREATE OR REPLACE VIEW tracks_full AS
 SELECT 
     t.*,
     COALESCE(
@@ -405,7 +485,7 @@ LEFT JOIN track_links tl ON t.id = tl.track_id AND tl.is_active = TRUE
 GROUP BY t.id;
 
 -- View: Popular tracks (for discovery)
-CREATE VIEW popular_tracks AS
+CREATE OR REPLACE VIEW popular_tracks AS
 SELECT 
     t.*,
     COUNT(uf.id) as favorite_count
@@ -417,7 +497,7 @@ HAVING COUNT(uf.id) > 0
 ORDER BY favorite_count DESC;
 
 -- View: Recently added tracks
-CREATE VIEW recent_tracks AS
+CREATE OR REPLACE VIEW recent_tracks AS
 SELECT * FROM tracks
 WHERE is_public = TRUE
 ORDER BY created_at DESC

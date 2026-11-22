@@ -94,6 +94,10 @@ CREATE TABLE tracks (
     position_x FLOAT,
     position_y FLOAT,
     position_z FLOAT,
+    position_method VARCHAR,
+    position_version_id UUID,
+    positioned_at TIMESTAMPTZ,
+    position_quality JSONB DEFAULT '{}'::jsonb,
     
     -- Visual attributes (for 3D rendering)
     color_r FLOAT DEFAULT 0.7,
@@ -129,6 +133,39 @@ CREATE INDEX idx_tracks_search ON tracks USING gin(
         coalesce(artist, '') || ' ' || 
         coalesce(album, '')
     )
+);
+
+-- ============================================================
+-- VERSIONED SONIC MAP PUBLICATION
+-- ============================================================
+CREATE TABLE sonic_map_versions (
+    id UUID PRIMARY KEY,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('staging', 'published', 'rejected', 'superseded')),
+    method VARCHAR(50) NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    model_version VARCHAR(50),
+    vector_dimensions INTEGER NOT NULL,
+    track_count INTEGER NOT NULL,
+    umap_params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+    catalog_fingerprint VARCHAR(64) NOT NULL,
+    failure_reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_sonic_map_versions_status ON sonic_map_versions(status, created_at DESC);
+CREATE UNIQUE INDEX idx_sonic_map_single_published
+    ON sonic_map_versions ((status)) WHERE status = 'published';
+CREATE INDEX idx_tracks_position_version ON tracks(position_version_id);
+
+CREATE TABLE sonic_map_positions_staging (
+    version_id UUID NOT NULL REFERENCES sonic_map_versions(id) ON DELETE CASCADE,
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position_x FLOAT NOT NULL,
+    position_y FLOAT NOT NULL,
+    position_z FLOAT NOT NULL,
+    PRIMARY KEY (version_id, track_id)
 );
 
 -- ============================================================

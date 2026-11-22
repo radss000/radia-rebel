@@ -66,3 +66,5 @@ Thumbs.db
 # Autres
 .tmp/
 temp/
+music-pipeline/validation/corpus/*/audio/
+music-pipeline/validation/artifacts/

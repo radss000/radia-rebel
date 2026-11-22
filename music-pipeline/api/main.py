@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID
 import hashlib
@@ -11,12 +12,25 @@ import tempfile
 import json
 import re
 import requests
+from dotenv import load_dotenv
 from pydantic import BaseModel, HttpUrl, validator
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]
+pipeline_env = PIPELINE_ROOT / ".env"
+repo_env = PROJECT_ROOT / ".env"
+if pipeline_env.exists():
+    load_dotenv(dotenv_path=pipeline_env, override=False)
+if repo_env.exists():
+    load_dotenv(dotenv_path=repo_env, override=False)
+if not pipeline_env.exists() and not repo_env.exists():
+    load_dotenv(override=False)
 
 from database.utils import get_db_connection, DB_CONFIG
 from jobs.queue import enqueue_analysis_job, serialize_job
 from processing.audio_features import extract_audio_features, derive_position
 from processing.providers.youtube_utils import extract_video_id
+from api.similarity import SimilarityServiceError, find_similar_tracks
 
 app = FastAPI(title="REBEL Music API", version="1.0.0")
 
@@ -146,7 +160,7 @@ def infer_provider_type(url_value: Optional[str], explicit: Optional[str]) -> st
         return 'discogs'
     if 'spotify' in hostname:
         return 'spotify'
-    if 'youtube' in hostname or 'ytimg' in hostname:
+    if 'youtube' in hostname or 'ytimg' in hostname or hostname == 'youtu.be':
         return 'youtube_music'
     return 'other'
 
@@ -421,7 +435,9 @@ def root():
         "endpoints": {
             "tracks": "/api/tracks",
             "sonic_map": "/api/tracks/sonic-map",
+            "sonic_map_version": "/api/sonic-map/version",
             "track_detail": "/api/tracks/{id}",
+            "similar": "/api/tracks/{id}/similar",
             "search": "/api/search"
         }
     }
@@ -480,6 +496,40 @@ def ingest_track(payload: TrackIngestRequest):
     """Ingest a user uploaded track from the Node API into Postgres with real audio features"""
     temp_file = None
     try:
+        source_url = str(payload.preview_source_url or payload.audio_url)
+        provider_type = infer_provider_type(source_url, payload.preview_provider_type)
+        provider_track_id = derive_provider_track_id(payload, source_url)
+        if provider_type == "youtube_music":
+            conn = get_db_connection()
+            try:
+                upsert_result = _ensure_track_and_asset(
+                    conn,
+                    artist=payload.artist,
+                    title=payload.title,
+                    provider_type=provider_type,
+                    provider_track_id=provider_track_id,
+                    source_url=source_url,
+                    duration_seconds=payload.duration_seconds,
+                )
+                conn.commit()
+            except HTTPException:
+                conn.rollback()
+                raise
+            except Exception as exc:
+                conn.rollback()
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+            finally:
+                conn.close()
+
+            return {
+                "track_id": upsert_result["track_id"],
+                "audio_asset_id": upsert_result["audio_asset_id"],
+                "provider_type": provider_type,
+                "provider_track_id": provider_track_id,
+                "preview_source_url": source_url,
+                "note": "YouTube previews are fetched asynchronously; enqueue analysis jobs next.",
+            }
+
         response = requests.get(payload.audio_url, stream=True, timeout=30)
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Failed to download audio (status {response.status_code})")
@@ -869,6 +919,10 @@ def get_sonic_map_data(limit: int = 1000):
                 ) as color,
                 sphere_size as size,
                 emissive_intensity as "emissiveIntensity",
+                position_method as "positionMethod",
+                position_version_id::text as "positionVersionId",
+                positioned_at as "positionedAt",
+                position_quality as "positionQuality",
                 json_build_object(
                     'tempo', bpm,
                     'energy', energy,
@@ -904,6 +958,62 @@ def get_sonic_map_data(limit: int = 1000):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sonic-map/version")
+def get_sonic_map_version():
+    """Return provenance and quality metrics for the published Sonic Map."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """
+            SELECT
+                id::text AS id,
+                status,
+                method,
+                model_name,
+                model_version,
+                vector_dimensions,
+                track_count,
+                umap_params,
+                metrics,
+                catalog_fingerprint,
+                created_at,
+                published_at
+            FROM sonic_map_versions
+            WHERE status = 'published'
+            ORDER BY published_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """
+        )
+        version = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if not version:
+            raise HTTPException(status_code=404, detail="No published Sonic Map version")
+        return version
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/tracks/{track_id}/similar")
+def get_similar_tracks(
+    track_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=100),
+    min_score: float = Query(0.0, ge=-1.0, le=1.0),
+):
+    """Return CLAP nearest neighbors ranked by cosine similarity."""
+    try:
+        return find_similar_tracks(track_id, limit=limit, offset=offset, min_score=min_score)
+    except SimilarityServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 @app.get("/api/tracks/{track_id}")
 def get_track_detail(track_id: int):
