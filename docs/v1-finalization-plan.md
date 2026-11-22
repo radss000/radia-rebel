@@ -68,7 +68,11 @@ La V1 est considérée accurate lorsque :
 - [x] Chargement audio par soundfile + soxr, identique à librosa, y compris pour les WAV 24 bits et float.
 - [x] Configuration CLAP alignée entre les deux `.env.example`.
 - [x] Le module `processing/audio_assets/` est désormais versionné (il était exclu par `.gitignore`).
-- [ ] Chaîne du worker avec le vrai modèle CLAP : lancer `python scripts/phase1_worker_chain_check.py --audio-dir <dossier> --rounds 3`. Sans CLAP, la mémoire reste stable sur 5 passes.
+- [x] Chaîne du worker avec le vrai modèle CLAP (MacBook, 11 morceaux FLAC réels, 3 passes) : mémoire stable à 1 456 Mo, +0 Mo après échauffement. Médiane par morceau : caractéristiques audio 4,75 s, segment central + embedding 1,08 s.
+- Constats à traiter dans les phases suivantes :
+  - Le chargement de CLAP a pris 1 024 s, probablement parce que le checkpoint est sur un Bureau synchronisé par iCloud et non téléchargé. En développement, garder `checkpoints/` hors d'iCloud ; en production, l'intégrer à l'image ou au volume.
+  - Ce sont les caractéristiques audio qui ralentissent le worker (environ 4 fois plus longues que l'embedding) : elles analysent le morceau entier à 22 050 Hz.
+  - Intel OpenMP (torch) et LLVM OpenMP (scikit-learn/UMAP) sont chargés dans le même processus, avec un risque de blocage ou de crash. Cela justifie de séparer les workers embedding et positionnement.
 - [ ] Réécrire les tests `test_phase6_*`, exclus par défaut (marqueur `phase6_legacy`), contre les vraies API (phase 6).
 - Point de vigilance : à 5 000 embeddings synthétiques, le rappel des voisins tombe à 0,37, juste au-dessus du seuil provisoire de 0,35. La calibration de la phase 4 est prioritaire.
 
