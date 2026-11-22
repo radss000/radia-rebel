@@ -5,10 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import math
+import os
 import numpy as np
-import umap
-from sklearn.manifold import trustworthiness
-from sklearn.neighbors import NearestNeighbors
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +36,11 @@ class NeighborPositionResult:
 class UMAPPositioner:
     """Reduce CLAP embeddings to 3D positions with UMAP."""
 
-    def __init__(self) -> None:
+    def __init__(self, **umap_overrides: object) -> None:
+        unknown = set(umap_overrides).difference(UMAP_PARAMS)
+        if unknown:
+            raise TypeError(f"Unsupported UMAP parameters: {', '.join(sorted(unknown))}")
+        self._umap_overrides = dict(umap_overrides)
         self._umap_device = self._detect_umap_device()
         logger.info("UMAP device: %s", self._umap_device)
 
@@ -51,7 +53,10 @@ class UMAPPositioner:
             raise ValueError("UMAP requires at least 5 tracks")
 
         params = umap_params_for_count(num_tracks)
-        reducer = umap.UMAP(**params)
+        params.update(self._umap_overrides)
+        from umap import UMAP
+
+        reducer = UMAP(**params)
         coords = reducer.fit_transform(embeddings)
         coords = np.asarray(coords, dtype=np.float32)
         return self.normalize_coords(coords)
@@ -213,6 +218,9 @@ class UMAPPositioner:
 
         max_neighbors = max(1, (len(embeddings) - 1) // 2)
         quality_k = min(max(1, n_neighbors), max_neighbors)
+        from sklearn.manifold import trustworthiness
+        from sklearn.neighbors import NearestNeighbors
+
         trust = float(
             trustworthiness(
                 embeddings,
@@ -247,7 +255,11 @@ class UMAPPositioner:
 
     def _detect_umap_device(self) -> str:
         """Return the active UMAP device hint."""
-        if _gpu_available():
+        configured = os.getenv("UMAP_DEVICE", "cpu").strip().lower()
+        if configured not in {"cpu", "auto", "gpu"}:
+            logger.warning("Unsupported UMAP_DEVICE=%s; using cpu", configured)
+            return "cpu"
+        if configured in {"auto", "gpu"} and _gpu_available():
             return "gpu"
         return "cpu"
 
@@ -267,8 +279,13 @@ def _gpu_available() -> bool:
         return False
 
 
+# Backward-compatible name retained for callers created during phase 6.
+SonicPositioner = UMAPPositioner
+
+
 __all__ = [
     "NeighborPositionResult",
+    "SonicPositioner",
     "UMAP_PARAMS",
     "UMAPPositioner",
     "umap_params_for_count",

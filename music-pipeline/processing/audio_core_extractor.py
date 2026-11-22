@@ -7,7 +7,6 @@ import os
 from typing import Dict, Tuple
 import wave
 
-import librosa
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -55,15 +54,17 @@ def extract_core_segment(
     target_duration: int = 30,
     sr: int = 48000,
 ) -> Tuple[np.ndarray, Dict[str, float | str]]:
-    try:
-        audio, _ = librosa.load(audio_path, sr=sr, mono=True)
-    except Exception as exc:
-        if os.path.splitext(audio_path)[1].lower() == ".wav":
-            try:
-                audio = _load_wav_mono(audio_path, sr)
-            except Exception as wav_exc:
-                raise AudioLoadError(f"Cannot load audio: {audio_path}") from wav_exc
-        else:
+    if os.path.splitext(audio_path)[1].lower() == ".wav":
+        try:
+            audio = _load_wav_mono(audio_path, sr)
+        except Exception as wav_exc:
+            raise AudioLoadError(f"Cannot load audio: {audio_path}") from wav_exc
+    else:
+        try:
+            import librosa
+
+            audio, _ = librosa.load(audio_path, sr=sr, mono=True)
+        except Exception as exc:
             raise AudioLoadError(f"Cannot load audio: {audio_path}") from exc
     return extract_core_segment_from_array(audio, sr, target_duration=target_duration)
 

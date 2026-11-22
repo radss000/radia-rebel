@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 
 import numpy as np
-import librosa
 
 
 def normalise_feature(value: float, min_val: float, max_val: float) -> float:
@@ -49,6 +48,8 @@ def _convert_to_wav(source_path: str, sample_rate: int) -> str:
 
 
 def _load_audio_with_fallback(audio_path: str, sample_rate: int):
+    import librosa
+
     try:
         return librosa.load(audio_path, sr=sample_rate, mono=True)
     except Exception:
@@ -64,6 +65,8 @@ def _load_audio_with_fallback(audio_path: str, sample_rate: int):
 
 def extract_audio_features(audio_path: str):
     try:
+        import librosa
+
         y, sr = _load_audio_with_fallback(audio_path, sample_rate=22050)
         if not len(y):
             raise ValueError("Audio buffer empty")
