@@ -100,7 +100,7 @@ def audio_server(tmp_path_factory):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
-    yield base_url, files
+    yield base_url, files, folder
     server.shutdown()
 
 
@@ -126,7 +126,7 @@ def _wait_for_jobs(job_ids: list[str]) -> dict[str, dict]:
 
 @pytest.fixture(scope="module")
 def pipeline_run(audio_server):
-    base_url, files = audio_server
+    base_url, files, _folder = audio_server
     run_id = uuid.uuid4().hex[:8]
     tracks = {}
     for family, variant, name in files:
@@ -227,3 +227,48 @@ def test_map_version_endpoint_is_consistent(pipeline_run):
     if EXPECT_PUBLISHED_MAP:
         ours = {int(track_id) for track_id in pipeline_run["tracks"]}
         assert any(int(row["id"]) in ours for row in full_rows), "no e2e track placed by the published CLAP/UMAP map"
+
+
+def test_failed_step_fails_every_following_step(audio_server, pipeline_run):
+    """A step that fails must not leave the next steps 'queued' forever (RQ keeps
+    dependents of a failed job deferred). The audio disappears between ingest and
+    preview_fetch, so preview_fetch fails immediately."""
+    base_url, _files, folder = audio_server
+    rng = np.random.default_rng(7)
+    name = "vanishing.wav"
+    sf.write(folder / name, _variant(_family_signal("bass_drone", 5.0, rng), 0, rng), SAMPLE_RATE)
+    response = _api(
+        "POST",
+        "/api/tracks/ingest",
+        json={
+            "mongo_track_id": f"e2e-vanishing-{uuid.uuid4().hex[:8]}",
+            "title": "e2e vanishing",
+            "artist": "e2e",
+            "genre": "test",
+            "audio_url": f"{base_url}/{name}",
+            "preview_provider_type": "other",
+            "preview_rights_scope": "analysis_only",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    (folder / name).unlink()
+
+    job_ids, previous = [], None
+    for step in STEPS:
+        payload = {"job_type": step, "requested_by": "e2e-failure"}
+        if step != "position":
+            payload["audio_asset_id"] = body["audio_asset_id"]
+            payload["provider_type"] = "other"
+        if step != "preview_fetch":
+            payload["track_id"] = body["track_id"]
+        enqueued = _api("POST", "/api/jobs/enqueue", json=payload, params={"depends_on": previous} if previous else None)
+        assert enqueued.status_code == 200, enqueued.text
+        previous = enqueued.json()["queue_job_id"]
+        job_ids.append(str(enqueued.json()["job"]["id"]))
+
+    results = _wait_for_jobs(job_ids)
+    statuses = [results[job_id]["status"] for job_id in job_ids]
+    assert statuses == ["failed"] * 4, statuses
+    for job_id in job_ids[1:]:
+        assert (results[job_id].get("error_message") or "").startswith("Upstream job"), results[job_id]

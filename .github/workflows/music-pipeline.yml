@@ -13,6 +13,8 @@ on:
       - "docker-compose.yml"
       - ".github/workflows/music-pipeline.yml"
   workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly real-YouTube run, catches yt-dlp / YouTube changes
 
 concurrency:
   group: music-pipeline-${{ github.ref }}
@@ -85,6 +87,8 @@ jobs:
       REBEL_E2E_API_URL: http://127.0.0.1:8000
       REBEL_E2E_EXPECT_PUBLISHED_MAP: "1"
       REBEL_E2E_JOB_TIMEOUT: "1200"
+      # Read by the analysis worker (yt-dlp); a missing file only logs a warning.
+      YTDLP_COOKIES_PATH: secrets/youtube_cookies.txt
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -110,6 +114,16 @@ jobs:
         run: python scripts/download_clap_checkpoint.py
       - name: Initialise database and Qdrant collection (fresh schema)
         run: python database/init_db.py
+      - name: YouTube cookies (optional secret YOUTUBE_COOKIES)
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            mkdir -p secrets && printf '%s' "$YOUTUBE_COOKIES" > secrets/youtube_cookies.txt
+            echo "cookies installed"
+          else
+            echo "no YOUTUBE_COOKIES secret: YouTube may refuse downloads from CI runners"
+          fi
       - name: Start API and workers (analysis + positioning, separate processes)
         run: |
           mkdir -p /tmp/rebel-logs
@@ -124,6 +138,18 @@ jobs:
           grep -q "Listening on positioning" /tmp/rebel-logs/worker-positioning.log
       - name: pytest -m e2e
         run: python -m pytest -m e2e tests/e2e -v
+      - name: pytest -m e2e_youtube (real YouTube, production path)
+        # YouTube often challenges cloud IPs: report the result without blocking PRs.
+        continue-on-error: true
+        env:
+          REBEL_E2E_YOUTUBE_TIMEOUT: "600"
+        run: python -m pytest -m e2e_youtube tests/e2e -v -s
+      - name: Worker logs (YouTube run)
+        if: always()
+        run: |
+          for f in /tmp/rebel-logs/worker-analysis.log /tmp/rebel-logs/worker-positioning.log; do
+            echo "::group::$f"; grep -vE "Loaded$" "$f" | tail -n 120; echo "::endgroup::"
+          done
       - name: Service logs
         if: failure()
         run: |

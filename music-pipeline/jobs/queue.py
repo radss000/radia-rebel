@@ -155,7 +155,47 @@ def enqueue_analysis_job(
         conn.close()
         raise RuntimeError(f"Failed to enqueue job: {exc}") from exc
 
+    if depends_on:
+        job_row = _fail_if_upstream_already_failed(job_row, rq_job, depends_on)
+
     return job_row, rq_job.id
+
+
+def _fail_if_upstream_already_failed(job_row: Dict[str, Any], rq_job, depends_on: str) -> Dict[str, Any]:
+    """Close the race between enqueueing a step and its upstream step failing.
+
+    RQ keeps a job deferred forever when its dependency failed or was cancelled.
+    A failing job marks its row failed *then* reads its RQ dependents
+    (jobs.tasks._fail_dependents); here the dependency is registered in RQ (by
+    ``enqueue``) *then* the upstream row is read. Whatever the interleaving, one
+    side sees the other, so a step can no longer stay "queued" behind a failure.
+    """
+    conn = get_db_connection()
+    try:
+        with conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT status, error_message FROM analysis_jobs WHERE id = %s", (depends_on,))
+                upstream = cursor.fetchone()
+                if not upstream or upstream["status"] not in {"failed", "cancelled"}:
+                    return job_row
+                reason = f"Upstream job {depends_on} failed: {upstream.get('error_message') or upstream['status']}"[:500]
+                cursor.execute(
+                    """
+                    UPDATE analysis_jobs
+                    SET status = 'failed', error_message = %s, updated_at = NOW(), completed_at = NOW()
+                    WHERE id = %s AND status IN ('queued', 'pending')
+                    RETURNING *
+                    """,
+                    (reason, job_row["id"]),
+                )
+                updated = cursor.fetchone()
+    finally:
+        conn.close()
+    try:
+        rq_job.cancel()
+    except Exception:  # pragma: no cover - already gone
+        pass
+    return dict(updated) if updated else job_row
 
 
 __all__ = ["analysis_queue", "enqueue_analysis_job", "get_queue", "queue_name_for", "serialize_job"]
