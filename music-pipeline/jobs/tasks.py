@@ -151,12 +151,8 @@ def _fail_dependents(conn, job_id: str, message: str) -> None:
             if dep_id in seen:
                 continue
             seen.add(dep_id)
-            try:
-                dep_job = Job.fetch(dep_id, connection=current.connection)
-                pending.extend(dep_job.dependent_ids)
-                dep_job.cancel()
-            except Exception:  # pragma: no cover - job already gone
-                pass
+            # Order matters (see jobs.queue._fail_if_upstream_already_failed):
+            # commit the row as failed first, then read who depends on it.
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
@@ -166,7 +162,13 @@ def _fail_dependents(conn, job_id: str, message: str) -> None:
                     """,
                     (reason, now, now, dep_id),
                 )
-        conn.commit()
+            conn.commit()
+            try:
+                dep_job = Job.fetch(dep_id, connection=current.connection)
+                pending.extend(dep_job.dependent_ids)
+                dep_job.cancel()
+            except Exception:  # pragma: no cover - job already gone
+                pass
     except Exception as exc:  # pragma: no cover - never mask the original failure
         logger.warning("Could not fail dependents of job %s: %s", job_id, exc)
 
