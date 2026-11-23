@@ -29,6 +29,10 @@ YTDLP_IMPERSONATE = os.getenv("YTDLP_IMPERSONATE")
 YTDLP_PLAYER_CLIENTS = os.getenv("YTDLP_PLAYER_CLIENTS", "android")
 YTDLP_REFERER = os.getenv("YTDLP_REFERER", "https://www.youtube.com/")
 YTDLP_ORIGIN = os.getenv("YTDLP_ORIGIN", "https://www.youtube.com")
+# Without a socket timeout a stalled YouTube connection blocks the worker until
+# the RQ job timeout (or forever if the alarm cannot interrupt the read).
+YTDLP_SOCKET_TIMEOUT = float(os.getenv("YTDLP_SOCKET_TIMEOUT", "30"))
+YTDLP_RETRIES = int(os.getenv("YTDLP_RETRIES", "3"))
 YOUTUBE_USE_COBALT = os.getenv("YOUTUBE_USE_COBALT", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 logger.info(
@@ -165,6 +169,9 @@ class YouTubePreviewAdapter(PreviewAdapter):
             "no_warnings": True,
             "overwrites": True,
             "restrictfilenames": True,
+            "socket_timeout": YTDLP_SOCKET_TIMEOUT,
+            "retries": YTDLP_RETRIES,
+            "fragment_retries": YTDLP_RETRIES,
         }
         if YTDLP_AUDIO_FORMAT:
             ydl_opts["postprocessors"] = [

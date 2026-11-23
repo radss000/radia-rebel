@@ -141,7 +141,15 @@ jobs:
       - name: pytest -m e2e_youtube (real YouTube, production path)
         # YouTube often challenges cloud IPs: report the result without blocking PRs.
         continue-on-error: true
+        env:
+          REBEL_E2E_YOUTUBE_TIMEOUT: "600"
         run: python -m pytest -m e2e_youtube tests/e2e -v -s
+      - name: Worker logs (YouTube run)
+        if: always()
+        run: |
+          for f in /tmp/rebel-logs/worker-analysis.log /tmp/rebel-logs/worker-positioning.log; do
+            echo "::group::$f"; grep -vE "Loaded$" "$f" | tail -n 120; echo "::endgroup::"
+          done
       - name: Service logs
         if: failure()
         run: |

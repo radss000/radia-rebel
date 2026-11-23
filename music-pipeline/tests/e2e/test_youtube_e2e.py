@@ -25,7 +25,7 @@ import requests
 pytestmark = pytest.mark.e2e_youtube
 
 API_URL = os.getenv("REBEL_E2E_API_URL", "").rstrip("/")
-JOB_TIMEOUT_SECONDS = int(os.getenv("REBEL_E2E_JOB_TIMEOUT", "900"))
+JOB_TIMEOUT_SECONDS = int(os.getenv("REBEL_E2E_YOUTUBE_TIMEOUT", os.getenv("REBEL_E2E_JOB_TIMEOUT", "900")))
 ARTIST = os.getenv("REBEL_E2E_YOUTUBE_ARTIST", "Madlib")
 TITLE = os.getenv("REBEL_E2E_YOUTUBE_TITLE", "Road of the Lonely Ones")
 
@@ -37,8 +37,25 @@ def _api(method: str, path: str, **kwargs) -> requests.Response:
     return requests.request(method, f"{API_URL}{path}", timeout=120, **kwargs)
 
 
+_RUN_CACHE: dict = {}
+
+
 @pytest.fixture(scope="module")
 def youtube_run():
+    # Run the (slow) ingestion once even if it fails, instead of once per test.
+    if "error" in _RUN_CACHE:
+        pytest.fail(_RUN_CACHE["error"], pytrace=False)
+    if "result" in _RUN_CACHE:
+        return _RUN_CACHE["result"]
+    try:
+        _RUN_CACHE["result"] = _ingest_and_wait()
+    except AssertionError as exc:
+        _RUN_CACHE["error"] = str(exc)
+        raise
+    return _RUN_CACHE["result"]
+
+
+def _ingest_and_wait():
     response = _api("POST", "/api/tracks/search-ingest", json={"artist": ARTIST, "title": TITLE})
     assert response.status_code == 200, f"search-ingest failed: {response.status_code} {response.text[:500]}"
     body = response.json()
@@ -53,7 +70,15 @@ def youtube_run():
                 if job["status"] in {"succeeded", "failed", "cancelled"}:
                     final[job_id] = job
         time.sleep(2.0)
-    assert len(final) == len(job_ids), f"jobs still running after {JOB_TIMEOUT_SECONDS}s"
+    if len(final) < len(job_ids):
+        states = []
+        for job_id in job_ids:
+            job = final.get(job_id) or _api("GET", f"/api/jobs/{job_id}").json()
+            states.append(
+                f"{job['job_type']}={job['status']} started={job.get('started_at')} "
+                f"attempts={job.get('attempts')} error={job.get('error_message')}"
+            )
+        raise AssertionError(f"jobs not finished after {JOB_TIMEOUT_SECONDS}s: " + " | ".join(states))
     return {"ingest": body, "jobs": [final[job_id] for job_id in job_ids]}
 
 
